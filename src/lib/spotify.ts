@@ -131,6 +131,26 @@ export async function searchSpotifyTracks(
   return response.tracks.items;
 }
 
+export async function searchSpotifyTrackCandidates(
+  userId: string,
+  queries: { title: string; artist: string | null }[]
+) {
+  const seen = new Set<string>();
+  const tracks: SpotifyTrack[] = [];
+
+  for (const query of queries) {
+    const results = await searchSpotifyTracks(userId, query.title, query.artist);
+    for (const track of results) {
+      if (!seen.has(track.id)) {
+        seen.add(track.id);
+        tracks.push(track);
+      }
+    }
+  }
+
+  return tracks;
+}
+
 export async function createSpotifyPlaylist(userId: string, name: string) {
   const token = await getSpotifyAccessToken(userId);
   const me = await fetchJson<SpotifyMeResponse>("https://api.spotify.com/v1/me", {

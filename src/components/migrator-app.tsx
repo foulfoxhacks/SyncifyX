@@ -9,7 +9,10 @@ import {
   Music2,
   RefreshCw,
   Search,
-  Upload
+  SlidersHorizontal,
+  Sparkles,
+  Upload,
+  Wand2
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
@@ -29,6 +32,7 @@ type ConnectionStatus = {
 
 type BusyAction = "sync" | "match" | "import" | null;
 type Filter = MatchStatus | "all";
+type SortMode = "position" | "confidence" | "needs_review" | "accepted";
 
 const filters: { key: Filter; label: string }[] = [
   { key: "all", label: "All" },
@@ -42,17 +46,20 @@ export function MigratorApp() {
   const [status, setStatus] = useState<ConnectionStatus | null>(null);
   const [items, setItems] = useState<ReviewItem[]>([]);
   const [filter, setFilter] = useState<Filter>("all");
+  const [sortMode, setSortMode] = useState<SortMode>("needs_review");
+  const [batchSize, setBatchSize] = useState(50);
+  const [useAi, setUseAi] = useState(false);
   const [busy, setBusy] = useState<BusyAction>(null);
+  const [busyVideoId, setBusyVideoId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
   async function refresh(nextFilter = filter) {
-    const [statusResponse, itemsResponse] = await Promise.all([
-      fetch("/api/connections"),
-      fetch(`/api/matches?status=${nextFilter}`)
+    const [statusData, itemsData] = await Promise.all([
+      apiRequest<ConnectionStatus>("/api/connections"),
+      apiRequest<{ items: ReviewItem[] }>(`/api/matches?status=${nextFilter}`)
     ]);
-    setStatus(await statusResponse.json());
-    const data = (await itemsResponse.json()) as { items: ReviewItem[] };
-    setItems(data.items);
+    setStatus(statusData);
+    setItems(itemsData.items);
   }
 
   useEffect(() => {
@@ -64,14 +71,21 @@ export function MigratorApp() {
     refresh().catch((error) => setMessage(error.message));
   }, []);
 
-  async function runAction<T>(action: BusyAction, url: string, success: (data: T) => string) {
+  async function runAction<T>(
+    action: BusyAction,
+    url: string,
+    success: (data: T) => string,
+    body?: unknown
+  ) {
     setBusy(action);
     setMessage(null);
     try {
-      const response = await fetch(url, { method: "POST" });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error ?? "Request failed.");
-      setMessage(success(data as T));
+      const data = await apiRequest<T>(url, {
+        method: "POST",
+        headers: body ? { "content-type": "application/json" } : undefined,
+        body: body ? JSON.stringify(body) : undefined
+      });
+      setMessage(success(data));
       await refresh();
     } catch (error) {
       setMessage((error as Error).message);
@@ -80,24 +94,43 @@ export function MigratorApp() {
     }
   }
 
-  async function updateAccepted(videoId: string, spotifyTrackId: string | null) {
-    const response = await fetch("/api/matches", {
-      method: "PATCH",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ videoId, spotifyTrackId })
-    });
-    const data = await response.json();
-    if (!response.ok) {
-      setMessage(data.error ?? "Could not update match.");
-      return;
+  async function findBest(item: ReviewItem) {
+    setBusyVideoId(item.videoId);
+    setMessage(null);
+    try {
+      const data = await apiRequest<{ searched: number }>("/api/matches/run", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ videoId: item.videoId, limit: 1, useAi })
+      });
+      setMessage(data.searched ? `Refreshed best match for "${item.title}".` : "No row was matched.");
+      await refresh();
+    } catch (error) {
+      setMessage((error as Error).message);
+    } finally {
+      setBusyVideoId(null);
     }
-    await refresh();
   }
 
+  async function updateAccepted(videoId: string, spotifyTrackId: string | null) {
+    try {
+      await apiRequest<{ ok: boolean }>("/api/matches", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ videoId, spotifyTrackId })
+      });
+      await refresh();
+    } catch (error) {
+      setMessage((error as Error).message);
+    }
+  }
+
+  const displayedItems = useMemo(() => sortItems(items, sortMode), [items, sortMode]);
   const importReady = useMemo(
     () => items.filter((item) => item.matches.some((match) => match.accepted)).length,
     [items]
   );
+  const reviewed = (status?.counts.matched ?? 0) + (status?.counts.noMatch ?? 0) + (status?.counts.skipped ?? 0);
 
   return (
     <div className="app-shell">
@@ -106,12 +139,17 @@ export function MigratorApp() {
           <div className="brand-mark">
             <Music2 size={22} aria-hidden />
           </div>
-          YouTube Music to Spotify
+          SyncifyX
         </div>
         <p className="sidebar-copy">
-          Rescue your YouTube Music liked songs and rebuild them on Spotify without
-          manually hunting every track.
+          Move YouTube Music likes into Spotify with reviewable matches and safe batch imports.
         </p>
+        <div className="feature-stack" aria-label="Available features">
+          <Feature icon={<Search size={15} />} label="LM playlist source" />
+          <Feature icon={<SlidersHorizontal size={15} />} label="Batch matching" />
+          <Feature icon={<Wand2 size={15} />} label="Find best match" />
+          <Feature icon={<Sparkles size={15} />} label="Optional AI parse assist" />
+        </div>
         <div className="step-list" aria-label="Import steps">
           <Step icon={<ExternalLink size={16} />} label="Connect Google" done={status?.google} />
           <Step icon={<ExternalLink size={16} />} label="Connect Spotify" done={status?.spotify} />
@@ -126,9 +164,8 @@ export function MigratorApp() {
           <div>
             <h1>Move liked songs from YouTube Music into Spotify.</h1>
             <p className="lede">
-              This app targets YouTube Music liked-song behavior through the
-              authenticated YouTube Data API playlist data, then builds a Spotify
-              playlist from confirmed matches.
+              Fetch the YouTube Music Liked Music list, score Spotify candidates, review uncertain rows,
+              then import accepted tracks into a new playlist.
             </p>
           </div>
           <div className="status-pills">
@@ -145,11 +182,11 @@ export function MigratorApp() {
 
         {message ? <div className="notice">{message}</div> : null}
 
-        <section className="panel" aria-label="Migration controls">
+        <section className="panel command-panel" aria-label="Migration controls">
           <div className="toolbar">
             <div className="toolbar-title">
               <h2>Migration</h2>
-              <span>Connect, fetch, score, review, then create the playlist.</span>
+              <span>{reviewed} reviewed. {importReady} accepted for import.</span>
             </div>
             <div className="actions">
               <a className="button" href="/api/auth/google/start" title="Connect Google">
@@ -164,8 +201,8 @@ export function MigratorApp() {
                 className="button"
                 disabled={!status?.google || busy !== null}
                 onClick={() =>
-                  runAction("sync", "/api/youtube/sync", (data: { count: number }) =>
-                    `Fetched ${data.count} liked songs.`
+                  runAction("sync", "/api/youtube/sync", (data: { count: number; playlistId: string }) =>
+                    `Fetched ${data.count} songs from ${data.playlistId}.`
                   )
                 }
                 title="Fetch YouTube Music liked songs"
@@ -177,14 +214,17 @@ export function MigratorApp() {
                 className="button"
                 disabled={!status?.spotify || !status?.counts.total || busy !== null}
                 onClick={() =>
-                  runAction("match", "/api/matches/run", (data: { searched: number }) =>
-                    `Searched Spotify for ${data.searched} songs.`
+                  runAction(
+                    "match",
+                    "/api/matches/run",
+                    (data: { searched: number }) => `Matched ${data.searched} songs in this batch.`,
+                    { limit: batchSize, useAi }
                   )
                 }
-                title="Search Spotify and score matches"
+                title="Search Spotify and score the next batch"
               >
                 {busy === "match" ? <Loader2 size={17} className="spin" /> : <RefreshCw size={17} />}
-                Match
+                Match {batchSize}
               </button>
               <button
                 className="button primary"
@@ -204,6 +244,30 @@ export function MigratorApp() {
             </div>
           </div>
 
+          <div className="option-bar" aria-label="Matching options">
+            <label>
+              <span>Batch</span>
+              <select className="select compact" value={batchSize} onChange={(event) => setBatchSize(Number(event.target.value))}>
+                <option value={25}>25</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+            </label>
+            <label>
+              <span>Sort</span>
+              <select className="select compact" value={sortMode} onChange={(event) => setSortMode(event.target.value as SortMode)}>
+                <option value="needs_review">Review first</option>
+                <option value="confidence">Best score</option>
+                <option value="accepted">Accepted first</option>
+                <option value="position">YouTube order</option>
+              </select>
+            </label>
+            <label className="toggle">
+              <input type="checkbox" checked={useAi} onChange={(event) => setUseAi(event.target.checked)} />
+              AI parse assist
+            </label>
+          </div>
+
           <div className="content-grid" aria-label="Match summary">
             <Stat value={status?.counts.total ?? 0} label="Fetched" />
             <Stat value={status?.counts.matched ?? 0} label="Matched" />
@@ -216,7 +280,7 @@ export function MigratorApp() {
           <div className="toolbar">
             <div className="toolbar-title">
               <h2>Review</h2>
-              <span>{items.length} songs shown. Accepted tracks are queued for import.</span>
+              <span>{displayedItems.length} songs shown. Accepted tracks are queued for import.</span>
             </div>
           </div>
           <div className="filters">
@@ -234,14 +298,20 @@ export function MigratorApp() {
             ))}
           </div>
           <div className="review-list">
-            {items.length === 0 ? (
+            {displayedItems.length === 0 ? (
               <div className="empty">
                 <ListMusic size={34} aria-hidden />
                 <p>Fetch liked songs to start filling the review queue.</p>
               </div>
             ) : (
-              items.map((item) => (
-                <ReviewRow key={item.videoId} item={item} onAccept={updateAccepted} />
+              displayedItems.map((item) => (
+                <ReviewRow
+                  key={item.videoId}
+                  item={item}
+                  busy={busyVideoId === item.videoId}
+                  onAccept={updateAccepted}
+                  onFindBest={findBest}
+                />
               ))
             )}
           </div>
@@ -251,19 +321,20 @@ export function MigratorApp() {
   );
 }
 
-function Step({
-  icon,
-  label,
-  done
-}: {
-  icon: ReactNode;
-  label: string;
-  done?: boolean;
-}) {
+function Step({ icon, label, done }: { icon: ReactNode; label: string; done?: boolean }) {
   return (
     <div className="step">
       <span className="step-icon">{done ? <CheckCircle2 size={16} /> : icon}</span>
       <span>{label}</span>
+    </div>
+  );
+}
+
+function Feature({ icon, label }: { icon: ReactNode; label: string }) {
+  return (
+    <div className="feature">
+      <span>{icon}</span>
+      <b>{label}</b>
     </div>
   );
 }
@@ -279,21 +350,21 @@ function Stat({ value, label }: { value: number; label: string }) {
 
 function ReviewRow({
   item,
-  onAccept
+  busy,
+  onAccept,
+  onFindBest
 }: {
   item: ReviewItem;
+  busy: boolean;
   onAccept: (videoId: string, spotifyTrackId: string | null) => void;
+  onFindBest: (item: ReviewItem) => void;
 }) {
   const accepted = item.matches.find((match) => match.accepted)?.spotifyTrackId ?? "";
   const best = item.matches[0];
 
   return (
     <div className="row">
-      {item.thumbnail ? (
-        <img className="thumb" src={item.thumbnail} alt="" />
-      ) : (
-        <div className="thumb" aria-hidden />
-      )}
+      {item.thumbnail ? <img className="thumb" src={item.thumbnail} alt="" /> : <div className="thumb" aria-hidden />}
       <div className="title-block">
         <span className={`badge ${item.matchStatus}`}>{labelStatus(item.matchStatus)}</span>
         <strong title={item.title}>{item.title}</strong>
@@ -311,7 +382,7 @@ function ReviewRow({
               </span>
             </div>
             <span className="meta" title={best.reason}>
-              {best.albumName} · {best.reason}
+              {best.albumName} - {best.reason}
             </span>
             <select
               className="select"
@@ -332,6 +403,9 @@ function ReviewRow({
         )}
       </div>
       <div className="row-actions">
+        <button className="icon-button" disabled={busy} onClick={() => onFindBest(item)} title="Find best match">
+          {busy ? <Loader2 size={16} className="spin" /> : <Wand2 size={16} />}
+        </button>
         <label className="toggle">
           <input
             type="checkbox"
@@ -344,6 +418,53 @@ function ReviewRow({
       </div>
     </div>
   );
+}
+
+async function apiRequest<T>(url: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(url, init);
+  const text = await response.text();
+  const contentType = response.headers.get("content-type") ?? "";
+  const data = parseResponseText(text, contentType);
+
+  if (!response.ok) {
+    const message =
+      typeof data === "object" && data && "error" in data
+        ? String((data as { error: unknown }).error)
+        : text || `Request failed with ${response.status}`;
+    throw new Error(message);
+  }
+
+  return data as T;
+}
+
+function parseResponseText(text: string, contentType: string) {
+  if (!text || !contentType.includes("application/json")) return text;
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+}
+
+function sortItems(items: ReviewItem[], sortMode: SortMode) {
+  const priority: Record<MatchStatus, number> = {
+    needs_review: 0,
+    no_match: 1,
+    matched: 2,
+    skipped: 3
+  };
+
+  return [...items].sort((a, b) => {
+    if (sortMode === "position") return a.position - b.position;
+    if (sortMode === "confidence") {
+      return (b.matches[0]?.confidenceScore ?? -1) - (a.matches[0]?.confidenceScore ?? -1);
+    }
+    if (sortMode === "accepted") {
+      return Number(b.matches.some((match) => match.accepted)) - Number(a.matches.some((match) => match.accepted));
+    }
+    return priority[a.matchStatus] - priority[b.matchStatus] || a.position - b.position;
+  });
 }
 
 function labelStatus(status: MatchStatus) {

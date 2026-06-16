@@ -228,6 +228,9 @@ GOOGLE_REDIRECT_URI=https://YOUR_VERCEL_PROJECT.vercel.app/api/auth/google/callb
 YOUTUBE_API_KEY=...
 YOUTUBE_MUSIC_LIKES_PLAYLIST_ID=LM
 YOUTUBE_FALLBACK_TO_REGULAR_LIKES=false
+OPENAI_API_KEY=
+OPENAI_MATCHING_ENABLED=false
+OPENAI_MODEL=gpt-5.4-mini
 SPOTIFY_CLIENT_ID=...
 SPOTIFY_CLIENT_SECRET=...
 SPOTIFY_REDIRECT_URI=https://YOUR_VERCEL_PROJECT.vercel.app/api/auth/spotify/callback
@@ -288,6 +291,27 @@ To intentionally allow fallback to the smaller regular YouTube liked-videos play
 ```text
 YOUTUBE_FALLBACK_TO_REGULAR_LIKES=true
 ```
+
+## Matching Controls
+
+The review screen now supports:
+
+- Batch matching in chunks of 25, 50, or 100 songs.
+- Per-row **Find best match** for a single song.
+- Sorting by review priority, best confidence score, accepted rows, or original YouTube order.
+- Safer refresh behavior: fetching the YouTube Music source replaces old source rows so a previous regular YouTube-like import does not linger.
+
+Deterministic matching remains the default. It searches multiple Spotify query shapes per song, then scores title, artist, duration, music signals, exact-title hits, exact-artist containment, and variant mismatches.
+
+Optional OpenAI parse assist can be enabled with:
+
+```text
+OPENAI_API_KEY=...
+OPENAI_MATCHING_ENABLED=true
+OPENAI_MODEL=gpt-5.4-mini
+```
+
+When enabled, OpenAI only improves the artist/title guess before Spotify search. Spotify search and confidence scoring still happen inside the app.
 
 ## Motion and UX Notes
 
