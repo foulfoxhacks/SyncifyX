@@ -4,6 +4,8 @@
 
 ### Fixed
 
+- Prevented the app from staying on `checking` forever when account-status or review-queue requests fail.
+- Added Postgres connection timeouts and clearer Vercel database error messages.
 - Prevented stale cached connection checks after Google or Spotify OAuth redirects.
 - Added OAuth status retry logic so the connected provider has time to appear before the UI marks it as needed.
 - Changed provider pills to show `checking` while account state is loading.

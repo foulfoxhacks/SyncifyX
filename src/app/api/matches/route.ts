@@ -10,16 +10,30 @@ const patchSchema = z.object({
 });
 
 export async function GET(request: NextRequest) {
-  const userId = await getUserId();
-  const status = request.nextUrl.searchParams.get("status") as MatchStatus | "all" | null;
-  return NextResponse.json(
-    { items: await listReviewItems(userId, status ?? "all") },
-    {
-      headers: {
-        "cache-control": "no-store, no-cache, must-revalidate"
+  try {
+    const userId = await getUserId();
+    const status = request.nextUrl.searchParams.get("status") as MatchStatus | "all" | null;
+    return NextResponse.json(
+      { items: await listReviewItems(userId, status ?? "all") },
+      {
+        headers: {
+          "cache-control": "no-store, no-cache, must-revalidate"
+        }
       }
-    }
-  );
+    );
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error: `Could not load review queue. Check DATABASE_URL/DATABASE_SSL in Vercel. ${(error as Error).message}`
+      },
+      {
+        status: 500,
+        headers: {
+          "cache-control": "no-store, no-cache, must-revalidate"
+        }
+      }
+    );
+  }
 }
 
 export async function PATCH(request: NextRequest) {

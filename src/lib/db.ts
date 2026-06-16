@@ -11,6 +11,9 @@ const pool =
   globalThis.__syncifyxPgPool ??
   new Pool({
     connectionString,
+    connectionTimeoutMillis: Number(process.env.DATABASE_CONNECT_TIMEOUT_MS ?? 8000),
+    idleTimeoutMillis: 10_000,
+    max: Number(process.env.DATABASE_POOL_MAX ?? 3),
     ssl:
       process.env.DATABASE_SSL === "false"
         ? false
@@ -126,7 +129,12 @@ export async function ensureSchema() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
-  `).then(() => undefined);
+  `)
+    .then(() => undefined)
+    .catch((error) => {
+      migrationPromise = null;
+      throw error;
+    });
 
   return migrationPromise;
 }

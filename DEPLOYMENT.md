@@ -40,6 +40,8 @@ Use these while developing locally:
 APP_URL=http://127.0.0.1:3000
 DATABASE_URL=postgresql://...
 DATABASE_SSL=true
+DATABASE_CONNECT_TIMEOUT_MS=8000
+DATABASE_POOL_MAX=3
 GOOGLE_REDIRECT_URI=http://127.0.0.1:3000/api/auth/google/callback
 SPOTIFY_REDIRECT_URI=http://127.0.0.1:3000/api/auth/spotify/callback
 ```
@@ -222,6 +224,8 @@ APP_URL=https://YOUR_VERCEL_PROJECT.vercel.app
 SESSION_SECRET=the-same-kind-of-strong-random-value
 DATABASE_URL=postgresql://YOUR_EXTERNAL_RENDER_POSTGRES_URL
 DATABASE_SSL=true
+DATABASE_CONNECT_TIMEOUT_MS=8000
+DATABASE_POOL_MAX=3
 GOOGLE_CLIENT_ID=...
 GOOGLE_CLIENT_SECRET=...
 GOOGLE_REDIRECT_URI=https://YOUR_VERCEL_PROJECT.vercel.app/api/auth/google/callback

@@ -42,6 +42,18 @@ const filters: { key: Filter; label: string }[] = [
   { key: "skipped", label: "Skipped" }
 ];
 
+const emptyStatus: ConnectionStatus = {
+  google: false,
+  spotify: false,
+  counts: {
+    total: 0,
+    matched: 0,
+    needsReview: 0,
+    noMatch: 0,
+    skipped: 0
+  }
+};
+
 export function MigratorApp() {
   const [status, setStatus] = useState<ConnectionStatus | null>(null);
   const [items, setItems] = useState<ReviewItem[]>([]);
@@ -92,7 +104,11 @@ export function MigratorApp() {
       filter,
       connected === "google" || connected === "spotify" ? 4 : 0,
       connected === "google" || connected === "spotify" ? connected : undefined
-    ).catch((error) => setMessage(error.message));
+    ).catch((error) => {
+      setStatus(emptyStatus);
+      setItems([]);
+      setMessage(error.message);
+    });
   }, []);
 
   async function runAction<T>(
@@ -456,13 +472,27 @@ function ReviewRow({
 async function apiRequest<T>(url: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers);
   headers.set("cache-control", "no-cache");
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 15_000);
 
-  const response = await fetch(url, {
-    cache: "no-store",
-    credentials: "same-origin",
-    ...init,
-    headers
-  });
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      cache: "no-store",
+      credentials: "same-origin",
+      ...init,
+      headers,
+      signal: init?.signal ?? controller.signal
+    });
+  } catch (error) {
+    if ((error as Error).name === "AbortError") {
+      throw new Error("Request timed out while loading SyncifyX. Check the Vercel deployment logs and database connection variables.");
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
+  }
+
   const text = await response.text();
   const contentType = response.headers.get("content-type") ?? "";
   const data = parseResponseText(text, contentType);
