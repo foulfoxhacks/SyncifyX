@@ -1,0 +1,177 @@
+import { spotifyConfig, requireEnv } from "./config";
+import { getToken, upsertToken } from "./db";
+import { chunk, fetchJson } from "./http";
+
+type SpotifyTokenResponse = {
+  access_token: string;
+  token_type: string;
+  scope: string;
+  expires_in: number;
+  refresh_token?: string;
+};
+
+export type SpotifyTrack = {
+  id: string;
+  name: string;
+  duration_ms: number;
+  album: { name: string };
+  artists: { name: string }[];
+};
+
+type SpotifySearchResponse = {
+  tracks: {
+    items: SpotifyTrack[];
+  };
+};
+
+type SpotifyMeResponse = {
+  id: string;
+};
+
+type SpotifyPlaylistResponse = {
+  id: string;
+  external_urls?: {
+    spotify?: string;
+  };
+};
+
+export function getSpotifyAuthUrl(state: string) {
+  requireEnv(spotifyConfig.clientId, "SPOTIFY_CLIENT_ID");
+
+  const params = new URLSearchParams({
+    client_id: spotifyConfig.clientId,
+    response_type: "code",
+    redirect_uri: spotifyConfig.redirectUri,
+    scope: spotifyConfig.scopes.join(" "),
+    state
+  });
+
+  return `https://accounts.spotify.com/authorize?${params.toString()}`;
+}
+
+export async function exchangeSpotifyCode(userId: string, code: string) {
+  const token = await spotifyTokenRequest({
+    code,
+    redirect_uri: spotifyConfig.redirectUri,
+    grant_type: "authorization_code"
+  });
+
+  await upsertToken({
+    userId,
+    provider: "spotify",
+    accessToken: token.access_token,
+    refreshToken: token.refresh_token ?? null,
+    expiresAt: Date.now() + token.expires_in * 1000,
+    scope: token.scope,
+    tokenType: token.token_type
+  });
+}
+
+async function spotifyTokenRequest(params: Record<string, string>) {
+  requireEnv(spotifyConfig.clientSecret, "SPOTIFY_CLIENT_SECRET");
+
+  return fetchJson<SpotifyTokenResponse>("https://accounts.spotify.com/api/token", {
+    method: "POST",
+    headers: {
+      authorization: `Basic ${Buffer.from(
+        `${spotifyConfig.clientId}:${spotifyConfig.clientSecret}`
+      ).toString("base64")}`,
+      "content-type": "application/x-www-form-urlencoded"
+    },
+    body: new URLSearchParams(params)
+  });
+}
+
+export async function getSpotifyAccessToken(userId: string) {
+  const token = await getToken(userId, "spotify");
+  if (!token) throw new Error("Spotify account is not connected.");
+  if (token.expiresAt > Date.now() + 60_000) return token.accessToken;
+  if (!token.refreshToken) return token.accessToken;
+
+  const refreshed = await spotifyTokenRequest({
+    refresh_token: token.refreshToken,
+    grant_type: "refresh_token"
+  });
+
+  await upsertToken({
+    userId,
+    provider: "spotify",
+    accessToken: refreshed.access_token,
+    refreshToken: refreshed.refresh_token ?? token.refreshToken,
+    expiresAt: Date.now() + refreshed.expires_in * 1000,
+    scope: refreshed.scope ?? token.scope,
+    tokenType: refreshed.token_type ?? token.tokenType
+  });
+
+  return refreshed.access_token;
+}
+
+export async function searchSpotifyTracks(
+  userId: string,
+  title: string,
+  artist: string | null
+) {
+  const token = await getSpotifyAccessToken(userId);
+  const query = artist ? `track:"${title}" artist:"${artist}"` : `track:"${title}"`;
+  const params = new URLSearchParams({
+    q: query,
+    type: "track",
+    limit: "5"
+  });
+
+  const response = await fetchJson<SpotifySearchResponse>(
+    `https://api.spotify.com/v1/search?${params.toString()}`,
+    {
+      headers: { authorization: `Bearer ${token}` }
+    },
+    true
+  );
+
+  return response.tracks.items;
+}
+
+export async function createSpotifyPlaylist(userId: string, name: string) {
+  const token = await getSpotifyAccessToken(userId);
+  const me = await fetchJson<SpotifyMeResponse>("https://api.spotify.com/v1/me", {
+    headers: { authorization: `Bearer ${token}` }
+  });
+
+  return fetchJson<SpotifyPlaylistResponse>(
+    `https://api.spotify.com/v1/users/${me.id}/playlists`,
+    {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        name,
+        public: false,
+        description: "Imported from YouTube Music Liked Songs."
+      })
+    },
+    true
+  );
+}
+
+export async function addTracksToPlaylist(
+  userId: string,
+  playlistId: string,
+  uris: string[]
+) {
+  const token = await getSpotifyAccessToken(userId);
+  for (const batch of chunk(uris, 100)) {
+    await fetchJson<{ snapshot_id: string }>(
+      `https://api.spotify.com/v1/playlists/${playlistId}/tracks`,
+      {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({ uris: batch })
+      },
+      true
+    );
+  }
+}
