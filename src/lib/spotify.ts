@@ -205,10 +205,55 @@ export async function addTracksToPlaylist(
   }
 }
 
+export async function saveTracksToLibrary(userId: string, trackIds: string[]) {
+  const token = await getSpotifyAccessToken(userId);
+
+  for (const batch of chunk(trackIds, 50)) {
+    try {
+      await spotifyWrite(
+        "https://api.spotify.com/v1/me/tracks",
+        {
+          method: "PUT",
+          headers: {
+            authorization: `Bearer ${token}`,
+            "content-type": "application/json"
+          },
+          body: JSON.stringify({ ids: batch })
+        },
+        true
+      );
+    } catch (error) {
+      throw enhanceSpotifyForbidden(error, "saving tracks to Spotify Liked Songs");
+    }
+  }
+}
+
+async function spotifyWrite(url: string, init: RequestInit, retry429 = false) {
+  const response = await fetch(url, init);
+
+  if (response.status === 429 && retry429) {
+    const retryAfter = Number(response.headers.get("retry-after") ?? "1");
+    await new Promise((resolve) =>
+      setTimeout(resolve, Math.max(1, retryAfter) * 1000)
+    );
+    return spotifyWrite(url, init, false);
+  }
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new ApiError(
+      `${response.status} ${response.statusText}: ${body}`,
+      response.status,
+      response.statusText,
+      body
+    );
+  }
+}
+
 function enhanceSpotifyForbidden(error: unknown, stage: string) {
   if (error instanceof ApiError && error.status === 403) {
     return new Error(
-      `Spotify denied access while ${stage}. Reconnect Spotify from the app so the token includes playlist-modify-private and playlist-modify-public, and make sure your Spotify account is added under the app's User Management while the Spotify app is in development mode. Spotify response: ${error.body}`
+      `Spotify denied access while ${stage}. Reconnect Spotify from the app so the token includes user-library-modify, playlist-modify-private, and playlist-modify-public, and make sure your Spotify account is added under the app's User Management while the Spotify app is in development mode. Spotify response: ${error.body}`
     );
   }
 

@@ -36,6 +36,7 @@ type Filter = MatchStatus | "all";
 type SortMode = "position" | "confidence" | "needs_review" | "accepted";
 type ThemeName = "syncify" | "midnight" | "studio" | "contrast";
 type BatchMode = "preset" | "custom" | "all";
+type ImportDestination = "liked" | "playlist" | "both";
 
 const filters: { key: Filter; label: string }[] = [
   { key: "all", label: "All" },
@@ -74,6 +75,7 @@ export function MigratorApp() {
   const [customBatchSize, setCustomBatchSize] = useState(75);
   const [theme, setTheme] = useState<ThemeName>("syncify");
   const [useAi, setUseAi] = useState(false);
+  const [destination, setDestination] = useState<ImportDestination>("liked");
   const [customizationOpen, setCustomizationOpen] = useState(false);
   const [busy, setBusy] = useState<BusyAction>(null);
   const [busyVideoId, setBusyVideoId] = useState<string | null>(null);
@@ -198,7 +200,7 @@ export function MigratorApp() {
           SyncifyX
         </div>
         <p className="sidebar-copy">
-          Move YouTube Music likes into Spotify with reviewable matches and safe batch imports.
+          Move YouTube Music likes into Spotify Liked Songs with reviewable matches and safe batch imports.
         </p>
         <div className="feature-stack" aria-label="Available features">
           <Feature icon={<Search size={15} />} label="LM playlist source" />
@@ -220,7 +222,7 @@ export function MigratorApp() {
           <Step icon={<ExternalLink size={16} />} label="Connect Spotify" done={status?.spotify} />
           <Step icon={<Download size={16} />} label="Fetch liked songs" done={Boolean(status?.counts.total)} />
           <Step icon={<Search size={16} />} label="Review matches" done={Boolean(status?.counts.matched)} />
-          <Step icon={<Upload size={16} />} label="Create playlist" />
+          <Step icon={<Upload size={16} />} label="Save to Liked Songs" />
         </div>
       </aside>
 
@@ -230,7 +232,7 @@ export function MigratorApp() {
             <h1>Move liked songs from YouTube Music into Spotify.</h1>
             <p className="lede">
               Fetch the YouTube Music Liked Music list, score Spotify candidates, review uncertain rows,
-              then import accepted tracks into a new playlist.
+              then save accepted tracks into Spotify Liked Songs.
             </p>
           </div>
           <div className="status-pills">
@@ -295,16 +297,18 @@ export function MigratorApp() {
               className="button primary"
               disabled={!importReady || busy !== null}
               onClick={() =>
-                runAction("import", "/api/import/spotify", (data: { count: number; url: string | null }) =>
-                  data.url
-                    ? `Created playlist with ${data.count} tracks: ${data.url}`
-                    : `Created playlist with ${data.count} tracks.`
+                runAction(
+                  "import",
+                  "/api/import/spotify",
+                  (data: { count: number; destination: ImportDestination; url: string | null }) =>
+                    importMessage(data.count, data.destination, data.url),
+                  { destination }
                 )
               }
-              title="Create Spotify playlist"
+              title="Save accepted tracks to Spotify"
             >
               {busy === "import" ? <Loader2 size={17} className="spin" /> : <Upload size={17} />}
-              Import
+              {destination === "playlist" ? "Create Playlist" : "Save Likes"}
             </button>
             <button
               className="button"
@@ -389,6 +393,24 @@ export function MigratorApp() {
                 </label>
               </div>
             </div>
+            <div className="drawer-section">
+              <h2>Destination</h2>
+              <div className="drawer-controls">
+                <label>
+                  <span>Import to</span>
+                  <select
+                    className="select compact"
+                    value={destination}
+                    onChange={(event) => setDestination(event.target.value as ImportDestination)}
+                  >
+                    <option value="liked">Spotify Liked Songs</option>
+                    <option value="playlist">New playlist</option>
+                    <option value="both">Liked Songs + playlist</option>
+                  </select>
+                </label>
+              </div>
+              <span className="option-note">Liked Songs requires reconnecting Spotify with library write access.</span>
+            </div>
           </section>
         ) : null}
 
@@ -406,13 +428,13 @@ export function MigratorApp() {
             <h2>About The Developer</h2>
             <p>
               Built by foulfoxhacks as a practical music rescue tool: transparent matching,
-              review-first imports, and enough personality to make a migration patch feel alive.
+              review-first saves, and enough personality to make a migration patch feel alive.
             </p>
           </div>
           <div className="info-panel">
             <h2>Customization</h2>
             <p>
-              Pick a theme, tune batch size, sort the queue, toggle AI parsing, and refresh
+              Pick a theme, tune batch size, choose a destination, sort the queue, toggle AI parsing, and refresh
               individual rows when a song deserves a closer look.
             </p>
           </div>
@@ -420,7 +442,7 @@ export function MigratorApp() {
             <h2>Migration Modes</h2>
             <p>
               Presets are safest. Custom batches let you tune speed. All mode is available for
-              quick passes when the deployment has enough runtime.
+              quick passes when the deployment has enough runtime. The primary destination is Spotify Liked Songs.
             </p>
           </div>
         </section>
@@ -429,7 +451,7 @@ export function MigratorApp() {
           <div className="toolbar">
             <div className="toolbar-title">
               <h2>Review</h2>
-              <span>{displayedItems.length} songs shown. Accepted tracks are queued for import.</span>
+              <span>{displayedItems.length} songs shown. Accepted tracks are queued for Spotify Liked Songs.</span>
             </div>
           </div>
           <div className="filters">
@@ -562,7 +584,7 @@ function ReviewRow({
             disabled={!best}
             onChange={(event) => onAccept(item.videoId, event.target.checked ? best.spotifyTrackId : null)}
           />
-          Import
+          Save
         </label>
       </div>
     </div>
@@ -615,6 +637,22 @@ function capitalize(value: string) {
 function clampBatch(value: number) {
   if (!Number.isFinite(value)) return 50;
   return Math.min(500, Math.max(1, Math.round(value)));
+}
+
+function importMessage(count: number, destination: ImportDestination, url: string | null) {
+  if (destination === "liked") {
+    return `Saved ${count} tracks to Spotify Liked Songs.`;
+  }
+
+  if (destination === "both") {
+    return url
+      ? `Saved ${count} tracks to Spotify Liked Songs and created a playlist: ${url}`
+      : `Saved ${count} tracks to Spotify Liked Songs and created a playlist.`;
+  }
+
+  return url
+    ? `Created playlist with ${count} tracks: ${url}`
+    : `Created playlist with ${count} tracks.`;
 }
 
 function parseResponseText(text: string, contentType: string) {

@@ -6,7 +6,7 @@ const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "YouTube Music Likes to Spotify",
-  description: "Migrate YouTube Music liked songs into a Spotify playlist."
+  description: "Migrate YouTube Music liked songs into Spotify Liked Songs."
 };
 
 export default function RootLayout({

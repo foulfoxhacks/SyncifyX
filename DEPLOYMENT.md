@@ -119,7 +119,7 @@ YouTube Music Likes to Spotify
 4. Add a short description:
 
 ```text
-Migrates a user's YouTube Music liked songs into a Spotify playlist after review.
+Migrates a user's YouTube Music liked songs into Spotify Liked Songs after review, with optional playlist export.
 ```
 
 5. Add these local redirect URIs:
@@ -141,7 +141,7 @@ SPOTIFY_REDIRECT_URI=http://127.0.0.1:3000/api/auth/spotify/callback
 The app requests these Spotify scopes:
 
 ```text
-playlist-modify-private playlist-modify-public user-read-private
+user-library-modify playlist-modify-private playlist-modify-public user-read-private
 ```
 
 Spotify requires the redirect URI in the authorization request to exactly match a URI configured in the app dashboard. `localhost` is not allowed for Spotify redirects; use the explicit loopback IP literal `http://127.0.0.1:3000/api/auth/spotify/callback`.
@@ -172,8 +172,8 @@ Test in this order:
 7. Click **Fetch**.
 8. Click **Match**.
 9. Review accepted matches.
-10. Click **Import**.
-11. Check Spotify for the playlist named `Imported YouTube Likes`.
+10. Click **Save Likes**.
+11. Check Spotify Liked Songs for the saved tracks.
 
 If Google says `redirect_uri_mismatch`, copy the exact `GOOGLE_REDIRECT_URI` from `.env.local` into the Google OAuth client.
 
@@ -208,6 +208,8 @@ GitHub's command-line import docs recommend creating the remote repository first
 ## Vercel Serverless Deployment
 
 Pick one canonical production app URL. The app redirects every other production host to `APP_URL`, so do not mix `syncifyx.vercel.app` and a custom domain between `APP_URL`, Google redirect URLs, and Spotify redirect URLs.
+
+In production, OAuth callback URLs are derived from `APP_URL`. Provider-specific redirect env vars are still useful for local development, but production deployments intentionally ignore stale `GOOGLE_REDIRECT_URI` and `SPOTIFY_REDIRECT_URI` values so the canonical host cannot drift.
 
 Current canonical production app URL:
 
@@ -350,7 +352,7 @@ These animations should remain quiet. The product is a utility, so motion should
 - Spotify OAuth works locally.
 - Fetch returns YouTube liked music items.
 - Matching creates review rows.
-- Import creates a Spotify playlist.
+- Import saves accepted tracks to Spotify Liked Songs.
 - Code is committed to `main`.
 - GitHub remote exists.
 - Vercel project imports the GitHub repo.
