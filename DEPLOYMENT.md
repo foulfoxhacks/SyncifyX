@@ -305,6 +305,7 @@ The review screen now supports:
 - Sorting by review priority, best confidence score, accepted rows, or original YouTube order.
 - Safer refresh behavior: fetching the YouTube Music source replaces old source rows so a previous regular YouTube-like import does not linger.
 - Theme presets plus About/Customization/Migration mode panels for a more polished public page.
+- Primary actions live in the top control bar; theme, batch, sort, and AI settings live in the customization drawer.
 
 Deterministic matching remains the default. It searches multiple Spotify query shapes per song, then scores title, artist, duration, music signals, exact-title hits, exact-artist containment, and variant mismatches.
 

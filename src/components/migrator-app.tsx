@@ -7,9 +7,9 @@ import {
   ListMusic,
   Loader2,
   Music2,
-  Palette,
   RefreshCw,
   Search,
+  Settings2,
   SlidersHorizontal,
   Sparkles,
   Upload,
@@ -74,6 +74,7 @@ export function MigratorApp() {
   const [customBatchSize, setCustomBatchSize] = useState(75);
   const [theme, setTheme] = useState<ThemeName>("syncify");
   const [useAi, setUseAi] = useState(false);
+  const [customizationOpen, setCustomizationOpen] = useState(false);
   const [busy, setBusy] = useState<BusyAction>(null);
   const [busyVideoId, setBusyVideoId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -205,23 +206,6 @@ export function MigratorApp() {
           <Feature icon={<Wand2 size={15} />} label="Find best match" />
           <Feature icon={<Sparkles size={15} />} label="Optional AI parse assist" />
         </div>
-        <div className="theme-picker" aria-label="Theme picker">
-          <span>
-            <Palette size={15} aria-hidden />
-            Theme
-          </span>
-          <div className="theme-swatches">
-            {themes.map((item) => (
-              <button
-                key={item.key}
-                className={`swatch swatch-${item.key} ${theme === item.key ? "active" : ""}`}
-                onClick={() => setTheme(item.key)}
-                title={item.label}
-                aria-label={`Use ${item.label} theme`}
-              />
-            ))}
-          </div>
-        </div>
         <a
           className="sidebar-link"
           href="https://github.com/foulfoxhacks/SyncifyX/blob/main/CHANGELOG.md"
@@ -263,118 +247,152 @@ export function MigratorApp() {
 
         {message ? <div className="notice">{message}</div> : null}
 
+        <section className="control-bar" aria-label="Main controls">
+          <div className="control-summary">
+            <b>{reviewed} reviewed</b>
+            <span>{importReady} accepted</span>
+          </div>
+          <div className="actions">
+            <a className="button" href="/api/auth/google/start" title="Connect Google">
+              <ExternalLink size={17} aria-hidden />
+              Google
+            </a>
+            <a className="button" href="/api/auth/spotify/start" title="Connect Spotify">
+              <ExternalLink size={17} aria-hidden />
+              Spotify
+            </a>
+            <button
+              className="button"
+              disabled={!status?.google || busy !== null}
+              onClick={() =>
+                runAction("sync", "/api/youtube/sync", (data: { count: number; playlistId: string }) =>
+                  `Fetched ${data.count} songs from ${data.playlistId}.`
+                )
+              }
+              title="Fetch YouTube Music liked songs"
+            >
+              {busy === "sync" ? <Loader2 size={17} className="spin" /> : <Download size={17} />}
+              Fetch
+            </button>
+            <button
+              className="button"
+              disabled={!status?.spotify || !status?.counts.total || busy !== null}
+              onClick={() =>
+                runAction(
+                  "match",
+                  "/api/matches/run",
+                  (data: { searched: number; remaining: number }) =>
+                    `Matched ${data.searched} songs. ${data.remaining} still need review.`,
+                  { limit: effectiveBatch, useAi }
+                )
+              }
+              title="Search Spotify and score the next batch"
+            >
+              {busy === "match" ? <Loader2 size={17} className="spin" /> : <RefreshCw size={17} />}
+              {matchLabel}
+            </button>
+            <button
+              className="button primary"
+              disabled={!importReady || busy !== null}
+              onClick={() =>
+                runAction("import", "/api/import/spotify", (data: { count: number; url: string | null }) =>
+                  data.url
+                    ? `Created playlist with ${data.count} tracks: ${data.url}`
+                    : `Created playlist with ${data.count} tracks.`
+                )
+              }
+              title="Create Spotify playlist"
+            >
+              {busy === "import" ? <Loader2 size={17} className="spin" /> : <Upload size={17} />}
+              Import
+            </button>
+            <button
+              className="button"
+              onClick={() => setCustomizationOpen((open) => !open)}
+              title="Open customization menu"
+            >
+              <Settings2 size={17} aria-hidden />
+              Customize
+            </button>
+          </div>
+        </section>
+
+        {customizationOpen ? (
+          <section className="customization-drawer" aria-label="Customization menu">
+            <div className="drawer-section">
+              <h2>Theme</h2>
+              <div className="theme-swatches">
+                {themes.map((item) => (
+                  <button
+                    key={item.key}
+                    className={`swatch swatch-${item.key} ${theme === item.key ? "active" : ""}`}
+                    onClick={() => setTheme(item.key)}
+                    title={item.label}
+                    aria-label={`Use ${item.label} theme`}
+                  />
+                ))}
+              </div>
+            </div>
+            <div className="drawer-section">
+              <h2>Batch Mode</h2>
+              <div className="drawer-controls">
+                <label>
+                  <span>Mode</span>
+                  <select className="select compact" value={batchMode} onChange={(event) => setBatchMode(event.target.value as BatchMode)}>
+                    <option value="preset">Preset</option>
+                    <option value="custom">Custom</option>
+                    <option value="all">All</option>
+                  </select>
+                </label>
+                {batchMode === "preset" ? (
+                  <label>
+                    <span>Size</span>
+                    <select className="select compact" value={batchSize} onChange={(event) => setBatchSize(Number(event.target.value))}>
+                      <option value={25}>25</option>
+                      <option value={50}>50</option>
+                      <option value={100}>100</option>
+                      <option value={250}>250</option>
+                    </select>
+                  </label>
+                ) : null}
+                {batchMode === "custom" ? (
+                  <label>
+                    <span>Size</span>
+                    <input
+                      className="number-input"
+                      type="number"
+                      min={1}
+                      max={500}
+                      value={customBatchSize}
+                      onChange={(event) => setCustomBatchSize(Number(event.target.value))}
+                    />
+                  </label>
+                ) : null}
+              </div>
+              {batchMode === "all" ? <span className="option-note">All can run long on serverless.</span> : null}
+            </div>
+            <div className="drawer-section">
+              <h2>Review</h2>
+              <div className="drawer-controls">
+                <label>
+                  <span>Sort</span>
+                  <select className="select compact" value={sortMode} onChange={(event) => setSortMode(event.target.value as SortMode)}>
+                    <option value="needs_review">Review first</option>
+                    <option value="confidence">Best score</option>
+                    <option value="accepted">Accepted first</option>
+                    <option value="position">YouTube order</option>
+                  </select>
+                </label>
+                <label className="toggle">
+                  <input type="checkbox" checked={useAi} onChange={(event) => setUseAi(event.target.checked)} />
+                  AI parse assist
+                </label>
+              </div>
+            </div>
+          </section>
+        ) : null}
+
         <section className="panel command-panel" aria-label="Migration controls">
-          <div className="toolbar">
-            <div className="toolbar-title">
-              <h2>Migration</h2>
-              <span>{reviewed} reviewed. {importReady} accepted for import.</span>
-            </div>
-            <div className="actions">
-              <a className="button" href="/api/auth/google/start" title="Connect Google">
-                <ExternalLink size={17} aria-hidden />
-                Google
-              </a>
-              <a className="button" href="/api/auth/spotify/start" title="Connect Spotify">
-                <ExternalLink size={17} aria-hidden />
-                Spotify
-              </a>
-              <button
-                className="button"
-                disabled={!status?.google || busy !== null}
-                onClick={() =>
-                  runAction("sync", "/api/youtube/sync", (data: { count: number; playlistId: string }) =>
-                    `Fetched ${data.count} songs from ${data.playlistId}.`
-                  )
-                }
-                title="Fetch YouTube Music liked songs"
-              >
-                {busy === "sync" ? <Loader2 size={17} className="spin" /> : <Download size={17} />}
-                Fetch
-              </button>
-              <button
-                className="button"
-                disabled={!status?.spotify || !status?.counts.total || busy !== null}
-                onClick={() =>
-                  runAction(
-                    "match",
-                    "/api/matches/run",
-                    (data: { searched: number; remaining: number }) =>
-                      `Matched ${data.searched} songs. ${data.remaining} still need review.`,
-                    { limit: effectiveBatch, useAi }
-                  )
-                }
-                title="Search Spotify and score the next batch"
-              >
-                {busy === "match" ? <Loader2 size={17} className="spin" /> : <RefreshCw size={17} />}
-                {matchLabel}
-              </button>
-              <button
-                className="button primary"
-                disabled={!importReady || busy !== null}
-                onClick={() =>
-                  runAction("import", "/api/import/spotify", (data: { count: number; url: string | null }) =>
-                    data.url
-                      ? `Created playlist with ${data.count} tracks: ${data.url}`
-                      : `Created playlist with ${data.count} tracks.`
-                  )
-                }
-                title="Create Spotify playlist"
-              >
-                {busy === "import" ? <Loader2 size={17} className="spin" /> : <Upload size={17} />}
-                Import
-              </button>
-            </div>
-          </div>
-
-          <div className="option-bar" aria-label="Matching options">
-            <label>
-              <span>Batch</span>
-              <select className="select compact" value={batchMode} onChange={(event) => setBatchMode(event.target.value as BatchMode)}>
-                <option value="preset">Preset</option>
-                <option value="custom">Custom</option>
-                <option value="all">All</option>
-              </select>
-            </label>
-            {batchMode === "preset" ? (
-              <label>
-                <span>Size</span>
-                <select className="select compact" value={batchSize} onChange={(event) => setBatchSize(Number(event.target.value))}>
-                  <option value={25}>25</option>
-                  <option value={50}>50</option>
-                  <option value={100}>100</option>
-                  <option value={250}>250</option>
-                </select>
-              </label>
-            ) : null}
-            {batchMode === "custom" ? (
-              <label>
-                <span>Size</span>
-                <input
-                  className="number-input"
-                  type="number"
-                  min={1}
-                  max={500}
-                  value={customBatchSize}
-                  onChange={(event) => setCustomBatchSize(Number(event.target.value))}
-                />
-              </label>
-            ) : null}
-            <label>
-              <span>Sort</span>
-              <select className="select compact" value={sortMode} onChange={(event) => setSortMode(event.target.value as SortMode)}>
-                <option value="needs_review">Review first</option>
-                <option value="confidence">Best score</option>
-                <option value="accepted">Accepted first</option>
-                <option value="position">YouTube order</option>
-              </select>
-            </label>
-            <label className="toggle">
-              <input type="checkbox" checked={useAi} onChange={(event) => setUseAi(event.target.checked)} />
-              AI parse assist
-            </label>
-            {batchMode === "all" ? <span className="option-note">All can run long on serverless.</span> : null}
-          </div>
-
           <div className="content-grid" aria-label="Match summary">
             <Stat value={status?.counts.total ?? 0} label="Fetched" />
             <Stat value={status?.counts.matched ?? 0} label="Matched" />

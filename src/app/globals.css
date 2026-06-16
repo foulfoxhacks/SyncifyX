@@ -258,20 +258,6 @@ a {
   color: #ff6d86;
 }
 
-.theme-picker {
-  display: grid;
-  gap: 10px;
-}
-
-.theme-picker > span {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: #ffe8e3;
-  font-size: 13px;
-  font-weight: 800;
-}
-
 .theme-swatches {
   display: flex;
   gap: 8px;
@@ -451,6 +437,78 @@ h1 {
   overflow: hidden;
 }
 
+.control-bar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: rgba(255, 255, 255, 0.86);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(14px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px;
+}
+
+[data-theme="midnight"] .control-bar {
+  background: rgba(24, 27, 35, 0.9);
+}
+
+.control-summary {
+  display: grid;
+  gap: 3px;
+  min-width: 140px;
+}
+
+.control-summary b {
+  font-size: 15px;
+}
+
+.control-summary span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.customization-drawer {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  padding: 14px;
+}
+
+.drawer-section {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+}
+
+.drawer-section h2 {
+  font-size: 15px;
+}
+
+.drawer-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.drawer-controls label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 750;
+}
+
 .toolbar {
   display: flex;
   align-items: center;
@@ -512,25 +570,6 @@ h1 {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   border-top: 1px solid var(--line);
-}
-
-.option-bar {
-  padding: 12px 16px;
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-  align-items: center;
-  border-bottom: 1px solid var(--line);
-  background: var(--surface-2);
-}
-
-.option-bar label {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--muted);
-  font-size: 13px;
-  font-weight: 750;
 }
 
 .stat {
@@ -818,6 +857,16 @@ h1 {
 
   .actions {
     justify-content: stretch;
+  }
+
+  .control-bar {
+    position: static;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .customization-drawer {
+    grid-template-columns: 1fr;
   }
 
   .button {

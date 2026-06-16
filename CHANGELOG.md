@@ -13,6 +13,8 @@
 
 ### Changed
 
+- Moved theme, batch, sort, and AI settings into a focused customization drawer.
+- Added a sticky top control bar for primary migration actions.
 - Batch matching now supports presets, custom values up to 500, and an `all` mode.
 - YouTube Music source now targets the `LM` Liked Music playlist and does not silently fall back to regular YouTube liked videos unless explicitly enabled.
 - Matching now runs in batches instead of trying to process an entire liked-song library in one serverless request.
