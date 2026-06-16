@@ -5,7 +5,7 @@
 Migrate a user's authenticated YouTube Music liked songs into Spotify with a reviewable, recoverable workflow:
 
 1. Connect Google and Spotify.
-2. Fetch YouTube Music liked songs from the authenticated `LM` source.
+2. Choose and fetch a YouTube Music liked source or another authenticated YouTube playlist.
 3. Parse and score likely Spotify matches.
 4. Let the user review uncertain rows.
 5. Save accepted matches to Spotify Liked Songs.
@@ -14,10 +14,18 @@ The primary destination is Spotify Liked Songs through Spotify's saved-track lib
 
 ## Feature Areas
 
+### Source And Destination Selection
+
+- Pull source options from YouTube Music Liked Music and authenticated YouTube playlists.
+- Pull destination options from Spotify Liked Songs, new playlists, and existing Spotify playlists.
+- Preserve selected source and destination preferences per browser.
+- Add clearer warnings when changing source will replace the current review queue.
+
 ### Destination Modes
 
 - Save accepted tracks to Spotify Liked Songs with `user-library-modify`.
 - Create a new Spotify playlist from accepted matches as an optional mirror.
+- Add accepted tracks to an existing Spotify playlist.
 - Support both destinations in one import run.
 - Add duplicate checks before writing to either destination.
 

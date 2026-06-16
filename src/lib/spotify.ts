@@ -1,6 +1,7 @@
 import { spotifyConfig, requireEnv } from "./config";
 import { getToken, upsertToken } from "./db";
 import { ApiError, chunk, fetchJson } from "./http";
+import type { MigrationOption } from "./types";
 
 type SpotifyTokenResponse = {
   access_token: string;
@@ -30,9 +31,25 @@ type SpotifyMeResponse = {
 
 type SpotifyPlaylistResponse = {
   id: string;
+  name?: string;
   external_urls?: {
     spotify?: string;
   };
+};
+
+type SpotifyPlaylistsResponse = {
+  next?: string | null;
+  items: {
+    id: string;
+    name: string;
+    owner?: {
+      id?: string;
+      display_name?: string;
+    };
+    tracks?: {
+      total?: number;
+    };
+  }[];
 };
 
 export function getSpotifyAuthUrl(state: string) {
@@ -179,6 +196,54 @@ export async function createSpotifyPlaylist(userId: string, name: string) {
   }
 }
 
+export async function listSpotifyDestinationOptions(userId: string) {
+  const token = await getSpotifyAccessToken(userId);
+  const options: MigrationOption[] = [
+    {
+      id: "liked",
+      label: "Spotify Liked Songs",
+      description: "Save tracks directly into Your Library"
+    },
+    {
+      id: "playlist",
+      label: "New private playlist",
+      description: "Create Imported YouTube Likes"
+    },
+    {
+      id: "both",
+      label: "Liked Songs + new playlist",
+      description: "Save to Your Library and create a mirror playlist"
+    }
+  ];
+
+  let url: string | null = "https://api.spotify.com/v1/me/playlists?limit=50";
+
+  while (url) {
+    const page: SpotifyPlaylistsResponse = await fetchJson<SpotifyPlaylistsResponse>(
+      url,
+      {
+        headers: { authorization: `Bearer ${token}` }
+      },
+      true
+    );
+
+    for (const playlist of page.items) {
+      options.push({
+        id: `existing:${playlist.id}`,
+        label: playlist.name,
+        description: playlist.owner?.display_name
+          ? `Existing playlist by ${playlist.owner.display_name}`
+          : "Existing Spotify playlist",
+        trackCount: playlist.tracks?.total ?? null
+      });
+    }
+
+    url = page.next ?? null;
+  }
+
+  return options;
+}
+
 export async function addTracksToPlaylist(
   userId: string,
   playlistId: string,
@@ -253,7 +318,7 @@ async function spotifyWrite(url: string, init: RequestInit, retry429 = false) {
 function enhanceSpotifyForbidden(error: unknown, stage: string) {
   if (error instanceof ApiError && error.status === 403) {
     return new Error(
-      `Spotify denied access while ${stage}. Reconnect Spotify from the app so the token includes user-library-modify, playlist-modify-private, and playlist-modify-public, and make sure your Spotify account is added under the app's User Management while the Spotify app is in development mode. Spotify response: ${error.body}`
+      `Spotify denied access while ${stage}. Reconnect Spotify from the app so the token includes user-library-modify, playlist-read-private, playlist-read-collaborative, playlist-modify-private, and playlist-modify-public, and make sure your Spotify account is added under the app's User Management while the Spotify app is in development mode. Spotify response: ${error.body}`
     );
   }
 

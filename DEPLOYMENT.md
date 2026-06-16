@@ -141,7 +141,7 @@ SPOTIFY_REDIRECT_URI=http://127.0.0.1:3000/api/auth/spotify/callback
 The app requests these Spotify scopes:
 
 ```text
-user-library-modify playlist-modify-private playlist-modify-public user-read-private
+user-library-modify playlist-read-private playlist-read-collaborative playlist-modify-private playlist-modify-public user-read-private
 ```
 
 Spotify requires the redirect URI in the authorization request to exactly match a URI configured in the app dashboard. `localhost` is not allowed for Spotify redirects; use the explicit loopback IP literal `http://127.0.0.1:3000/api/auth/spotify/callback`.

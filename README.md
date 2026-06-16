@@ -2,9 +2,9 @@
 
 API-first MVP for migrating YouTube Music liked songs into Spotify Liked Songs.
 
-The app uses Google OAuth for YouTube Data API access, Spotify OAuth for library saves and optional playlist creation, Postgres persistence, a simple title/artist parser, Spotify track search, confidence scoring, a review UI, and batched imports.
+The app uses Google OAuth for YouTube Data API access, Spotify OAuth for library saves and playlist access, Postgres persistence, a simple title/artist parser, Spotify track search, confidence scoring, a review UI, and batched imports.
 
-Current UI features include theme presets, adjustable batch sizes, all-mode matching, queue sorting, optional AI parse assist, and per-song best-match refresh.
+Current UI features include selectable YouTube sources, selectable Spotify destinations, theme presets, adjustable batch sizes, all-mode matching, queue sorting, optional AI parse assist, and per-song best-match refresh.
 
 ## Setup
 
@@ -38,6 +38,6 @@ For OAuth credential creation, GitHub push steps, and Vercel deployment notes, u
 
 ## Notes
 
-This targets YouTube Music liked-song behavior through the authenticated YouTube Data API playlist data. YouTube Music does not expose a full standalone public API, so the app first asks YouTube for the authenticated user's related liked playlist and falls back to `LM` when needed.
+This targets YouTube Music liked-song behavior through authenticated YouTube Data API playlist data. YouTube Music does not expose a full standalone public API, so the app includes the `LM` liked source and can also list the authenticated user's YouTube playlists as selectable sources.
 
-Spotify imports use `user-library-modify` to save accepted tracks directly to Spotify Liked Songs in batches of 50. Optional playlist export uses `playlist-modify-private` and `playlist-modify-public`, creates a playlist named `Imported YouTube Likes`, and adds tracks in batches of 100 with retry handling for `429` responses.
+Spotify imports use `user-library-modify` to save accepted tracks directly to Spotify Liked Songs in batches of 50. Optional playlist export uses playlist read/modify scopes to create a playlist named `Imported YouTube Likes` or add to an existing Spotify playlist in batches of 100 with retry handling for `429` responses.

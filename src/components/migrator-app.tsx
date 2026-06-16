@@ -36,7 +36,13 @@ type Filter = MatchStatus | "all";
 type SortMode = "position" | "confidence" | "needs_review" | "accepted";
 type ThemeName = "syncify" | "midnight" | "studio" | "contrast";
 type BatchMode = "preset" | "custom" | "all";
-type ImportDestination = "liked" | "playlist" | "both";
+type ImportDestination = "liked" | "playlist" | "both" | "existing";
+type MigrationOption = {
+  id: string;
+  label: string;
+  description?: string;
+  trackCount?: number | null;
+};
 
 const filters: { key: Filter; label: string }[] = [
   { key: "all", label: "All" },
@@ -75,7 +81,10 @@ export function MigratorApp() {
   const [customBatchSize, setCustomBatchSize] = useState(75);
   const [theme, setTheme] = useState<ThemeName>("syncify");
   const [useAi, setUseAi] = useState(false);
-  const [destination, setDestination] = useState<ImportDestination>("liked");
+  const [sourceId, setSourceId] = useState("");
+  const [sourceOptions, setSourceOptions] = useState<MigrationOption[]>([]);
+  const [destinationId, setDestinationId] = useState("liked");
+  const [destinationOptions, setDestinationOptions] = useState<MigrationOption[]>([]);
   const [customizationOpen, setCustomizationOpen] = useState(false);
   const [busy, setBusy] = useState<BusyAction>(null);
   const [busyVideoId, setBusyVideoId] = useState<string | null>(null);
@@ -126,6 +135,29 @@ export function MigratorApp() {
       setMessage(error.message);
     });
   }, []);
+
+  useEffect(() => {
+    if (status?.google) {
+      loadYouTubeSources().catch((error) => setMessage(error.message));
+    }
+    if (status?.spotify) {
+      loadSpotifyDestinations().catch((error) => setMessage(error.message));
+    }
+  }, [status?.google, status?.spotify]);
+
+  async function loadYouTubeSources() {
+    const data = await apiRequest<{ sources: MigrationOption[] }>(`/api/youtube/sources?t=${Date.now()}`);
+    setSourceOptions(data.sources);
+    setSourceId((current) => current || data.sources[0]?.id || "");
+  }
+
+  async function loadSpotifyDestinations() {
+    const data = await apiRequest<{ destinations: MigrationOption[] }>(`/api/spotify/destinations?t=${Date.now()}`);
+    setDestinationOptions(data.destinations);
+    setDestinationId((current) =>
+      data.destinations.some((option) => option.id === current) ? current : data.destinations[0]?.id || "liked"
+    );
+  }
 
   async function runAction<T>(
     action: BusyAction,
@@ -203,7 +235,7 @@ export function MigratorApp() {
           Move YouTube Music likes into Spotify Liked Songs with reviewable matches and safe batch imports.
         </p>
         <div className="feature-stack" aria-label="Available features">
-          <Feature icon={<Search size={15} />} label="LM playlist source" />
+          <Feature icon={<Search size={15} />} label="Selectable sources" />
           <Feature icon={<SlidersHorizontal size={15} />} label="Batch matching" />
           <Feature icon={<Wand2 size={15} />} label="Find best match" />
           <Feature icon={<Sparkles size={15} />} label="Optional AI parse assist" />
@@ -231,8 +263,8 @@ export function MigratorApp() {
           <div>
             <h1>Move liked songs from YouTube Music into Spotify.</h1>
             <p className="lede">
-              Fetch the YouTube Music Liked Music list, score Spotify candidates, review uncertain rows,
-              then save accepted tracks into Spotify Liked Songs.
+              Choose a YouTube Music source, score Spotify candidates, review uncertain rows,
+              then save accepted tracks into the Spotify destination you choose.
             </p>
           </div>
           <div className="status-pills">
@@ -267,8 +299,12 @@ export function MigratorApp() {
               className="button"
               disabled={!status?.google || busy !== null}
               onClick={() =>
-                runAction("sync", "/api/youtube/sync", (data: { count: number; playlistId: string }) =>
-                  `Fetched ${data.count} songs from ${data.playlistId}.`
+                runAction(
+                  "sync",
+                  "/api/youtube/sync",
+                  (data: { count: number; playlistId: string }) =>
+                    `Fetched ${data.count} songs from ${sourceLabel(sourceOptions, data.playlistId)}.`,
+                  { sourcePlaylistId: sourceId || undefined }
                 )
               }
               title="Fetch YouTube Music liked songs"
@@ -302,13 +338,13 @@ export function MigratorApp() {
                   "/api/import/spotify",
                   (data: { count: number; destination: ImportDestination; url: string | null }) =>
                     importMessage(data.count, data.destination, data.url),
-                  { destination }
+                  { destinationId }
                 )
               }
               title="Save accepted tracks to Spotify"
             >
               {busy === "import" ? <Loader2 size={17} className="spin" /> : <Upload size={17} />}
-              {destination === "playlist" ? "Create Playlist" : "Save Likes"}
+              {destinationButtonLabel(destinationId)}
             </button>
             <button
               className="button"
@@ -394,22 +430,46 @@ export function MigratorApp() {
               </div>
             </div>
             <div className="drawer-section">
-              <h2>Destination</h2>
+              <h2>Source</h2>
               <div className="drawer-controls">
                 <label>
-                  <span>Import to</span>
+                  <span>Pull from</span>
                   <select
                     className="select compact"
-                    value={destination}
-                    onChange={(event) => setDestination(event.target.value as ImportDestination)}
+                    value={sourceId}
+                    disabled={!status?.google || sourceOptions.length === 0}
+                    onChange={(event) => setSourceId(event.target.value)}
                   >
-                    <option value="liked">Spotify Liked Songs</option>
-                    <option value="playlist">New playlist</option>
-                    <option value="both">Liked Songs + playlist</option>
+                    {sourceSelectOptions(sourceOptions).map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {optionLabel(option)}
+                      </option>
+                    ))}
                   </select>
                 </label>
               </div>
-              <span className="option-note">Liked Songs requires reconnecting Spotify with library write access.</span>
+              <span className="option-note">Changing the source replaces the current review queue on the next fetch.</span>
+            </div>
+            <div className="drawer-section">
+              <h2>Destination</h2>
+              <div className="drawer-controls">
+                <label>
+                  <span>Send to</span>
+                  <select
+                    className="select compact"
+                    value={destinationId}
+                    disabled={!status?.spotify}
+                    onChange={(event) => setDestinationId(event.target.value)}
+                  >
+                    {destinationSelectOptions(destinationOptions).map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {optionLabel(option)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <span className="option-note">Liked Songs requires Spotify library write access. Existing playlists require playlist edit access.</span>
             </div>
           </section>
         ) : null}
@@ -432,11 +492,11 @@ export function MigratorApp() {
             </p>
           </div>
           <div className="info-panel">
-            <h2>Customization</h2>
-            <p>
-              Pick a theme, tune batch size, choose a destination, sort the queue, toggle AI parsing, and refresh
+              <h2>Customization</h2>
+              <p>
+              Pick a theme, choose source and destination lists, tune batch size, sort the queue, toggle AI parsing, and refresh
               individual rows when a song deserves a closer look.
-            </p>
+              </p>
           </div>
           <div className="info-panel">
             <h2>Migration Modes</h2>
@@ -644,6 +704,10 @@ function importMessage(count: number, destination: ImportDestination, url: strin
     return `Saved ${count} tracks to Spotify Liked Songs.`;
   }
 
+  if (destination === "existing") {
+    return `Added ${count} tracks to the selected Spotify playlist.`;
+  }
+
   if (destination === "both") {
     return url
       ? `Saved ${count} tracks to Spotify Liked Songs and created a playlist: ${url}`
@@ -653,6 +717,34 @@ function importMessage(count: number, destination: ImportDestination, url: strin
   return url
     ? `Created playlist with ${count} tracks: ${url}`
     : `Created playlist with ${count} tracks.`;
+}
+
+function destinationButtonLabel(destinationId: string) {
+  if (destinationId === "playlist") return "Create Playlist";
+  if (destinationId.startsWith("existing:")) return "Add to Playlist";
+  return "Save Likes";
+}
+
+function sourceSelectOptions(options: MigrationOption[]) {
+  return options.length
+    ? options
+    : [{ id: "", label: "Connect Google to load sources", description: "Google needed" }];
+}
+
+function destinationSelectOptions(options: MigrationOption[]) {
+  return options.length
+    ? options
+    : [{ id: "liked", label: "Spotify Liked Songs", description: "Spotify needed" }];
+}
+
+function optionLabel(option: MigrationOption) {
+  return option.trackCount === null || option.trackCount === undefined
+    ? option.label
+    : `${option.label} (${option.trackCount})`;
+}
+
+function sourceLabel(options: MigrationOption[], playlistId: string) {
+  return options.find((option) => option.id === playlistId)?.label ?? playlistId;
 }
 
 function parseResponseText(text: string, contentType: string) {

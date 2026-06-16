@@ -1,6 +1,6 @@
 import { getGoogleAccessToken } from "./google";
 import { ApiError, fetchJson } from "./http";
-import type { YouTubeItem } from "./types";
+import type { MigrationOption, YouTubeItem } from "./types";
 
 type YouTubeChannelsResponse = {
   items?: {
@@ -32,6 +32,20 @@ type PlaylistItemsResponse = {
     };
     contentDetails?: {
       videoId?: string;
+    };
+  }[];
+};
+
+type PlaylistsResponse = {
+  nextPageToken?: string;
+  items?: {
+    id: string;
+    snippet: {
+      title: string;
+      description?: string;
+    };
+    contentDetails?: {
+      itemCount?: number;
     };
   }[];
 };
@@ -68,6 +82,32 @@ export async function fetchYouTubeMusicLikedItems(userId: string) {
   }
 
   throw lastError instanceof Error ? lastError : new Error("Could not fetch YouTube liked music.");
+}
+
+export async function fetchYouTubePlaylistSource(userId: string, playlistId: string) {
+  const token = await getGoogleAccessToken(userId);
+  const items = await fetchPlaylistItems(token, playlistId);
+  return { playlistId, items };
+}
+
+export async function listYouTubeSourceOptions(userId: string) {
+  const token = await getGoogleAccessToken(userId);
+  const options = new Map<string, MigrationOption>();
+  const likedIds = await getLikedPlaylistIds(token);
+
+  for (const [index, playlistId] of likedIds.entries()) {
+    options.set(playlistId, {
+      id: playlistId,
+      label: index === 0 ? "YouTube Music Liked Music" : "YouTube liked videos",
+      description: playlistId
+    });
+  }
+
+  for (const playlist of await listOwnedPlaylists(token)) {
+    options.set(playlist.id, playlist);
+  }
+
+  return Array.from(options.values());
 }
 
 async function fetchPlaylistItems(token: string, playlistId: string) {
@@ -133,6 +173,40 @@ async function getLikedPlaylistIds(token: string) {
 
   const regularYouTubeLikesId = response.items?.[0]?.contentDetails?.relatedPlaylists?.likes;
   return [...new Set([musicLikesId, regularYouTubeLikesId].filter(Boolean) as string[])];
+}
+
+async function listOwnedPlaylists(token: string) {
+  const playlists: MigrationOption[] = [];
+  let pageToken: string | undefined;
+
+  do {
+    const params = new URLSearchParams({
+      part: "snippet,contentDetails",
+      mine: "true",
+      maxResults: "50"
+    });
+    if (pageToken) params.set("pageToken", pageToken);
+
+    const page = await fetchJson<PlaylistsResponse>(
+      `https://www.googleapis.com/youtube/v3/playlists?${params.toString()}`,
+      {
+        headers: { authorization: `Bearer ${token}` }
+      }
+    );
+
+    for (const item of page.items ?? []) {
+      playlists.push({
+        id: item.id,
+        label: item.snippet.title,
+        description: item.snippet.description || item.id,
+        trackCount: item.contentDetails?.itemCount ?? null
+      });
+    }
+
+    pageToken = page.nextPageToken;
+  } while (pageToken);
+
+  return playlists;
 }
 
 async function fetchDurations(token: string, videoIds: string[]) {

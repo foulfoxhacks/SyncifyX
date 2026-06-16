@@ -28,3 +28,10 @@ export type ReviewItem = YouTubeItem & {
   parsedTitle: string | null;
   matches: SpotifyCandidate[];
 };
+
+export type MigrationOption = {
+  id: string;
+  label: string;
+  description?: string;
+  trackCount?: number | null;
+};

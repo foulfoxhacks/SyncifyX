@@ -28,6 +28,7 @@
 ### Added
 
 - Theme presets, an in-app theme picker, and About/Customization/Migration mode panels.
+- Source and destination dropdowns that pull YouTube playlist sources and Spotify playlist destinations from connected accounts.
 - Postgres persistence for Vercel/serverless hosting.
 - Per-song **Find best match** action.
 - Optional OpenAI parse assist through `OPENAI_MATCHING_ENABLED`.

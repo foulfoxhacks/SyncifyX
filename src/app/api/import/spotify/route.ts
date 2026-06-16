@@ -8,13 +8,13 @@ import {
 import { getUserId } from "@/lib/session";
 
 const playlistName = "Imported YouTube Likes";
-type ImportDestination = "liked" | "playlist" | "both";
+type ImportDestination = "liked" | "playlist" | "both" | "existing";
 
 export async function POST(request: NextRequest) {
   try {
     const userId = await getUserId();
     const uris = await getAcceptedSpotifyUris(userId);
-    const destination = await getDestination(request);
+    const { destination, playlistId } = await getImportRequest(request);
 
     if (uris.length === 0) {
       return NextResponse.json(
@@ -37,9 +37,20 @@ export async function POST(request: NextRequest) {
       await recordImport(userId, playlist.id, playlistName, uris.length);
     }
 
+    if (destination === "existing") {
+      if (!playlistId) {
+        return NextResponse.json(
+          { error: "Choose a Spotify playlist before importing to an existing playlist." },
+          { status: 400 }
+        );
+      }
+      await addTracksToPlaylist(userId, playlistId, uris);
+      await recordImport(userId, playlistId, "Existing Spotify playlist", uris.length);
+    }
+
     return NextResponse.json({
       destination,
-      playlistId: playlist?.id ?? null,
+      playlistId: playlist?.id ?? playlistId ?? null,
       url: playlist?.external_urls?.spotify ?? null,
       count: uris.length
     });
@@ -51,15 +62,42 @@ export async function POST(request: NextRequest) {
   }
 }
 
-async function getDestination(request: NextRequest): Promise<ImportDestination> {
+async function getImportRequest(request: NextRequest): Promise<{
+  destination: ImportDestination;
+  playlistId: string | null;
+}> {
   try {
-    const body = (await request.json()) as { destination?: ImportDestination };
+    const body = (await request.json()) as {
+      destination?: ImportDestination;
+      destinationId?: string;
+      spotifyPlaylistId?: string;
+    };
+
+    if (body.destinationId?.startsWith("existing:")) {
+      return {
+        destination: "existing",
+        playlistId: body.destinationId.replace("existing:", "")
+      };
+    }
+
+    if (
+      body.destinationId === "liked" ||
+      body.destinationId === "playlist" ||
+      body.destinationId === "both"
+    ) {
+      return { destination: body.destinationId, playlistId: null };
+    }
+
     if (body.destination === "playlist" || body.destination === "both") {
-      return body.destination;
+      return { destination: body.destination, playlistId: body.spotifyPlaylistId ?? null };
+    }
+
+    if (body.destination === "existing" && body.spotifyPlaylistId) {
+      return { destination: "existing", playlistId: body.spotifyPlaylistId };
     }
   } catch {
-    return "liked";
+    return { destination: "liked", playlistId: null };
   }
 
-  return "liked";
+  return { destination: "liked", playlistId: null };
 }
