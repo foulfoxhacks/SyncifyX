@@ -1,5 +1,5 @@
 import { getGoogleAccessToken } from "./google";
-import { fetchJson } from "./http";
+import { ApiError, fetchJson } from "./http";
 import type { YouTubeItem } from "./types";
 
 type YouTubeChannelsResponse = {
@@ -47,7 +47,30 @@ type VideosResponse = {
 
 export async function fetchYouTubeMusicLikedItems(userId: string) {
   const token = await getGoogleAccessToken(userId);
-  const playlistId = await getLikedPlaylistId(token);
+  const playlistIds = await getLikedPlaylistIds(token);
+  const allowRegularLikesFallback = process.env.YOUTUBE_FALLBACK_TO_REGULAR_LIKES === "true";
+  let lastError: unknown;
+
+  for (const playlistId of playlistIds) {
+    try {
+      const items = await fetchPlaylistItems(token, playlistId);
+      return { playlistId, items };
+    } catch (error) {
+      lastError = error;
+      if (!allowRegularLikesFallback) break;
+    }
+  }
+
+  if (lastError instanceof ApiError) {
+    throw new Error(
+      `Could not fetch YouTube Music Liked Music playlist. YouTube returned ${lastError.status}: ${lastError.body}`
+    );
+  }
+
+  throw lastError instanceof Error ? lastError : new Error("Could not fetch YouTube liked music.");
+}
+
+async function fetchPlaylistItems(token: string, playlistId: string) {
   const items: YouTubeItem[] = [];
   let pageToken: string | undefined;
 
@@ -96,10 +119,11 @@ export async function fetchYouTubeMusicLikedItems(userId: string) {
     pageToken = page.nextPageToken;
   } while (pageToken);
 
-  return { playlistId, items };
+  return items;
 }
 
-async function getLikedPlaylistId(token: string) {
+async function getLikedPlaylistIds(token: string) {
+  const musicLikesId = process.env.YOUTUBE_MUSIC_LIKES_PLAYLIST_ID ?? "LM";
   const response = await fetchJson<YouTubeChannelsResponse>(
     "https://www.googleapis.com/youtube/v3/channels?part=contentDetails&mine=true",
     {
@@ -107,11 +131,8 @@ async function getLikedPlaylistId(token: string) {
     }
   );
 
-  return (
-    response.items?.[0]?.contentDetails?.relatedPlaylists?.likes ??
-    process.env.YOUTUBE_MUSIC_LIKES_PLAYLIST_ID ??
-    "LM"
-  );
+  const regularYouTubeLikesId = response.items?.[0]?.contentDetails?.relatedPlaylists?.likes;
+  return [...new Set([musicLikesId, regularYouTubeLikesId].filter(Boolean) as string[])];
 }
 
 async function fetchDurations(token: string, videoIds: string[]) {

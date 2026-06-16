@@ -226,6 +226,8 @@ GOOGLE_CLIENT_ID=...
 GOOGLE_CLIENT_SECRET=...
 GOOGLE_REDIRECT_URI=https://YOUR_VERCEL_PROJECT.vercel.app/api/auth/google/callback
 YOUTUBE_API_KEY=...
+YOUTUBE_MUSIC_LIKES_PLAYLIST_ID=LM
+YOUTUBE_FALLBACK_TO_REGULAR_LIKES=false
 SPOTIFY_CLIENT_ID=...
 SPOTIFY_CLIENT_SECRET=...
 SPOTIFY_REDIRECT_URI=https://YOUR_VERCEL_PROJECT.vercel.app/api/auth/spotify/callback
@@ -270,6 +272,22 @@ imports
 ```
 
 The first request to `/api/connections`, OAuth callback routes, or any import route will initialize the schema if it does not already exist.
+
+## YouTube Music Liked Music Source
+
+The app tries the YouTube Music `Liked Music` auto playlist first:
+
+```text
+YOUTUBE_MUSIC_LIKES_PLAYLIST_ID=LM
+```
+
+If the authenticated account/API combination cannot access `LM` through the YouTube Data API, the fetch will report the YouTube API error instead of silently importing the smaller regular YouTube liked-videos playlist.
+
+To intentionally allow fallback to the smaller regular YouTube liked-videos playlist, set:
+
+```text
+YOUTUBE_FALLBACK_TO_REGULAR_LIKES=true
+```
 
 ## Motion and UX Notes
 

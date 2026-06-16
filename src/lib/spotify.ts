@@ -1,6 +1,6 @@
 import { spotifyConfig, requireEnv } from "./config";
 import { getToken, upsertToken } from "./db";
-import { chunk, fetchJson } from "./http";
+import { ApiError, chunk, fetchJson } from "./http";
 
 type SpotifyTokenResponse = {
   access_token: string;
@@ -43,6 +43,7 @@ export function getSpotifyAuthUrl(state: string) {
     response_type: "code",
     redirect_uri: spotifyConfig.redirectUri,
     scope: spotifyConfig.scopes.join(" "),
+    show_dialog: "true",
     state
   });
 
@@ -136,22 +137,26 @@ export async function createSpotifyPlaylist(userId: string, name: string) {
     headers: { authorization: `Bearer ${token}` }
   });
 
-  return fetchJson<SpotifyPlaylistResponse>(
-    `https://api.spotify.com/v1/users/${me.id}/playlists`,
-    {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${token}`,
-        "content-type": "application/json"
+  try {
+    return await fetchJson<SpotifyPlaylistResponse>(
+      `https://api.spotify.com/v1/users/${me.id}/playlists`,
+      {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          name,
+          public: false,
+          description: "Imported from YouTube Music Liked Songs."
+        })
       },
-      body: JSON.stringify({
-        name,
-        public: false,
-        description: "Imported from YouTube Music Liked Songs."
-      })
-    },
-    true
-  );
+      true
+    );
+  } catch (error) {
+    throw enhanceSpotifyForbidden(error, "creating the Spotify playlist");
+  }
 }
 
 export async function addTracksToPlaylist(
@@ -161,17 +166,31 @@ export async function addTracksToPlaylist(
 ) {
   const token = await getSpotifyAccessToken(userId);
   for (const batch of chunk(uris, 100)) {
-    await fetchJson<{ snapshot_id: string }>(
-      `https://api.spotify.com/v1/playlists/${playlistId}/tracks`,
-      {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${token}`,
-          "content-type": "application/json"
+    try {
+      await fetchJson<{ snapshot_id: string }>(
+        `https://api.spotify.com/v1/playlists/${playlistId}/tracks`,
+        {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${token}`,
+            "content-type": "application/json"
+          },
+          body: JSON.stringify({ uris: batch })
         },
-        body: JSON.stringify({ uris: batch })
-      },
-      true
+        true
+      );
+    } catch (error) {
+      throw enhanceSpotifyForbidden(error, "adding tracks to the Spotify playlist");
+    }
+  }
+}
+
+function enhanceSpotifyForbidden(error: unknown, stage: string) {
+  if (error instanceof ApiError && error.status === 403) {
+    return new Error(
+      `Spotify denied access while ${stage}. Reconnect Spotify from the app so the token includes playlist-modify-private and playlist-modify-public, and make sure your Spotify account is added under the app's User Management while the Spotify app is in development mode. Spotify response: ${error.body}`
     );
   }
+
+  return error instanceof Error ? error : new Error(String(error));
 }

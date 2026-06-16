@@ -215,6 +215,8 @@ export async function getConnectionStatus(userId: string) {
 
 export async function upsertYouTubeItems(userId: string, items: YouTubeItem[]) {
   await withTransaction(async (client) => {
+    await client.query("DELETE FROM youtube_items WHERE user_id = $1", [userId]);
+
     for (const item of items) {
       await client.query(
         `INSERT INTO youtube_items
