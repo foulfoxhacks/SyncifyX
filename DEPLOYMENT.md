@@ -207,7 +207,9 @@ GitHub's command-line import docs recommend creating the remote repository first
 
 ## Vercel Serverless Deployment
 
-Current production app URL:
+Pick one canonical production app URL. The app redirects every other production host to `APP_URL`, so do not mix `syncifyx.vercel.app` and a custom domain between `APP_URL`, Google redirect URLs, and Spotify redirect URLs.
+
+Current canonical production app URL:
 
 ```text
 https://syncifyx.vercel.app
@@ -265,6 +267,16 @@ https://syncifyx.vercel.app/api/auth/spotify/callback
 10. Redeploy if you changed Vercel environment variables.
 
 Vercel environment variables are configured outside source code and are available during builds and function execution. Vercel for GitHub automatically deploys pushes and pull requests from GitHub.
+
+If you switch to a custom domain such as `https://syncifyx.mellozone.site`, update all three production values together:
+
+```text
+APP_URL=https://syncifyx.mellozone.site
+GOOGLE_REDIRECT_URI=https://syncifyx.mellozone.site/api/auth/google/callback
+SPOTIFY_REDIRECT_URI=https://syncifyx.mellozone.site/api/auth/spotify/callback
+```
+
+Then add the matching Google and Spotify callback URLs in their developer dashboards. Leaving `APP_URL` on one host while OAuth callbacks point to another host can cause session cookies and connection status to appear to bounce between domains.
 
 ## Database Notes
 
