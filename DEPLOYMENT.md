@@ -205,6 +205,12 @@ GitHub's command-line import docs recommend creating the remote repository first
 
 ## Vercel Serverless Deployment
 
+Current production app URL:
+
+```text
+https://syncifyx.vercel.app
+```
+
 1. Open [Vercel](https://vercel.com/).
 2. Click **Add New -> Project**.
 3. Import the GitHub repository.
@@ -225,18 +231,26 @@ SPOTIFY_CLIENT_SECRET=...
 SPOTIFY_REDIRECT_URI=https://YOUR_VERCEL_PROJECT.vercel.app/api/auth/spotify/callback
 ```
 
+For this project, the concrete production values are:
+
+```text
+APP_URL=https://syncifyx.vercel.app
+GOOGLE_REDIRECT_URI=https://syncifyx.vercel.app/api/auth/google/callback
+SPOTIFY_REDIRECT_URI=https://syncifyx.vercel.app/api/auth/spotify/callback
+```
+
 6. Deploy.
 7. Copy the production deployment URL.
 8. Return to Google Cloud Console and add:
 
 ```text
-https://YOUR_VERCEL_PROJECT.vercel.app/api/auth/google/callback
+https://syncifyx.vercel.app/api/auth/google/callback
 ```
 
 9. Return to Spotify Developer Dashboard and add:
 
 ```text
-https://YOUR_VERCEL_PROJECT.vercel.app/api/auth/spotify/callback
+https://syncifyx.vercel.app/api/auth/spotify/callback
 ```
 
 10. Redeploy if you changed Vercel environment variables.
