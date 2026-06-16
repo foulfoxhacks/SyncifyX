@@ -7,6 +7,7 @@ import {
   ListMusic,
   Loader2,
   Music2,
+  Palette,
   RefreshCw,
   Search,
   SlidersHorizontal,
@@ -33,6 +34,8 @@ type ConnectionStatus = {
 type BusyAction = "sync" | "match" | "import" | null;
 type Filter = MatchStatus | "all";
 type SortMode = "position" | "confidence" | "needs_review" | "accepted";
+type ThemeName = "syncify" | "midnight" | "studio" | "contrast";
+type BatchMode = "preset" | "custom" | "all";
 
 const filters: { key: Filter; label: string }[] = [
   { key: "all", label: "All" },
@@ -40,6 +43,13 @@ const filters: { key: Filter; label: string }[] = [
   { key: "needs_review", label: "Needs Review" },
   { key: "no_match", label: "No Match" },
   { key: "skipped", label: "Skipped" }
+];
+
+const themes: { key: ThemeName; label: string }[] = [
+  { key: "syncify", label: "Syncify Red" },
+  { key: "midnight", label: "Midnight" },
+  { key: "studio", label: "Studio" },
+  { key: "contrast", label: "High Contrast" }
 ];
 
 const emptyStatus: ConnectionStatus = {
@@ -60,6 +70,9 @@ export function MigratorApp() {
   const [filter, setFilter] = useState<Filter>("all");
   const [sortMode, setSortMode] = useState<SortMode>("needs_review");
   const [batchSize, setBatchSize] = useState(50);
+  const [batchMode, setBatchMode] = useState<BatchMode>("preset");
+  const [customBatchSize, setCustomBatchSize] = useState(75);
+  const [theme, setTheme] = useState<ThemeName>("syncify");
   const [useAi, setUseAi] = useState(false);
   const [busy, setBusy] = useState<BusyAction>(null);
   const [busyVideoId, setBusyVideoId] = useState<string | null>(null);
@@ -171,9 +184,11 @@ export function MigratorApp() {
     [items]
   );
   const reviewed = (status?.counts.matched ?? 0) + (status?.counts.noMatch ?? 0) + (status?.counts.skipped ?? 0);
+  const effectiveBatch = batchMode === "all" ? "all" : batchMode === "custom" ? clampBatch(customBatchSize) : batchSize;
+  const matchLabel = effectiveBatch === "all" ? "Match all" : `Match ${effectiveBatch}`;
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" data-theme={theme}>
       <aside className="sidebar">
         <div className="brand">
           <div className="brand-mark">
@@ -189,6 +204,23 @@ export function MigratorApp() {
           <Feature icon={<SlidersHorizontal size={15} />} label="Batch matching" />
           <Feature icon={<Wand2 size={15} />} label="Find best match" />
           <Feature icon={<Sparkles size={15} />} label="Optional AI parse assist" />
+        </div>
+        <div className="theme-picker" aria-label="Theme picker">
+          <span>
+            <Palette size={15} aria-hidden />
+            Theme
+          </span>
+          <div className="theme-swatches">
+            {themes.map((item) => (
+              <button
+                key={item.key}
+                className={`swatch swatch-${item.key} ${theme === item.key ? "active" : ""}`}
+                onClick={() => setTheme(item.key)}
+                title={item.label}
+                aria-label={`Use ${item.label} theme`}
+              />
+            ))}
+          </div>
         </div>
         <a
           className="sidebar-link"
@@ -266,14 +298,15 @@ export function MigratorApp() {
                   runAction(
                     "match",
                     "/api/matches/run",
-                    (data: { searched: number }) => `Matched ${data.searched} songs in this batch.`,
-                    { limit: batchSize, useAi }
+                    (data: { searched: number; remaining: number }) =>
+                      `Matched ${data.searched} songs. ${data.remaining} still need review.`,
+                    { limit: effectiveBatch, useAi }
                   )
                 }
                 title="Search Spotify and score the next batch"
               >
                 {busy === "match" ? <Loader2 size={17} className="spin" /> : <RefreshCw size={17} />}
-                Match {batchSize}
+                {matchLabel}
               </button>
               <button
                 className="button primary"
@@ -296,12 +329,36 @@ export function MigratorApp() {
           <div className="option-bar" aria-label="Matching options">
             <label>
               <span>Batch</span>
-              <select className="select compact" value={batchSize} onChange={(event) => setBatchSize(Number(event.target.value))}>
-                <option value={25}>25</option>
-                <option value={50}>50</option>
-                <option value={100}>100</option>
+              <select className="select compact" value={batchMode} onChange={(event) => setBatchMode(event.target.value as BatchMode)}>
+                <option value="preset">Preset</option>
+                <option value="custom">Custom</option>
+                <option value="all">All</option>
               </select>
             </label>
+            {batchMode === "preset" ? (
+              <label>
+                <span>Size</span>
+                <select className="select compact" value={batchSize} onChange={(event) => setBatchSize(Number(event.target.value))}>
+                  <option value={25}>25</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                  <option value={250}>250</option>
+                </select>
+              </label>
+            ) : null}
+            {batchMode === "custom" ? (
+              <label>
+                <span>Size</span>
+                <input
+                  className="number-input"
+                  type="number"
+                  min={1}
+                  max={500}
+                  value={customBatchSize}
+                  onChange={(event) => setCustomBatchSize(Number(event.target.value))}
+                />
+              </label>
+            ) : null}
             <label>
               <span>Sort</span>
               <select className="select compact" value={sortMode} onChange={(event) => setSortMode(event.target.value as SortMode)}>
@@ -315,6 +372,7 @@ export function MigratorApp() {
               <input type="checkbox" checked={useAi} onChange={(event) => setUseAi(event.target.checked)} />
               AI parse assist
             </label>
+            {batchMode === "all" ? <span className="option-note">All can run long on serverless.</span> : null}
           </div>
 
           <div className="content-grid" aria-label="Match summary">
@@ -322,6 +380,30 @@ export function MigratorApp() {
             <Stat value={status?.counts.matched ?? 0} label="Matched" />
             <Stat value={status?.counts.needsReview ?? 0} label="Needs Review" />
             <Stat value={status?.counts.noMatch ?? 0} label="No Match" />
+          </div>
+        </section>
+
+        <section className="info-grid" aria-label="About and customization">
+          <div className="info-panel">
+            <h2>About The Developer</h2>
+            <p>
+              Built by foulfoxhacks as a practical music rescue tool: transparent matching,
+              review-first imports, and enough personality to make a migration patch feel alive.
+            </p>
+          </div>
+          <div className="info-panel">
+            <h2>Customization</h2>
+            <p>
+              Pick a theme, tune batch size, sort the queue, toggle AI parsing, and refresh
+              individual rows when a song deserves a closer look.
+            </p>
+          </div>
+          <div className="info-panel">
+            <h2>Migration Modes</h2>
+            <p>
+              Presets are safest. Custom batches let you tune speed. All mode is available for
+              quick passes when the deployment has enough runtime.
+            </p>
           </div>
         </section>
 
@@ -510,6 +592,11 @@ async function apiRequest<T>(url: string, init?: RequestInit): Promise<T> {
 
 function capitalize(value: string) {
   return value ? value.charAt(0).toUpperCase() + value.slice(1) : value;
+}
+
+function clampBatch(value: number) {
+  if (!Number.isFinite(value)) return 50;
+  return Math.min(500, Math.max(1, Math.round(value)));
 }
 
 function parseResponseText(text: string, contentType: string) {

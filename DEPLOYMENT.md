@@ -300,10 +300,11 @@ YOUTUBE_FALLBACK_TO_REGULAR_LIKES=true
 
 The review screen now supports:
 
-- Batch matching in chunks of 25, 50, or 100 songs.
+- Batch matching with presets, custom values up to 500, or all-mode.
 - Per-row **Find best match** for a single song.
 - Sorting by review priority, best confidence score, accepted rows, or original YouTube order.
 - Safer refresh behavior: fetching the YouTube Music source replaces old source rows so a previous regular YouTube-like import does not linger.
+- Theme presets plus About/Customization/Migration mode panels for a more polished public page.
 
 Deterministic matching remains the default. It searches multiple Spotify query shapes per song, then scores title, artist, duration, music signals, exact-title hits, exact-artist containment, and variant mismatches.
 

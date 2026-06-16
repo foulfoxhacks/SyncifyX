@@ -13,7 +13,7 @@ import { getUserId } from "@/lib/session";
 
 const bodySchema = z.object({
   videoId: z.string().min(1).optional(),
-  limit: z.number().int().min(1).max(100).default(50),
+  limit: z.union([z.number().int().min(1).max(500), z.literal("all")]).default(50),
   useAi: z.boolean().default(false)
 });
 
@@ -22,11 +22,14 @@ export async function POST(request: Request) {
     const userId = await getUserId();
     const body = bodySchema.parse(await readJsonBody(request));
     const allItems = await listYouTubeItems(userId);
+    const matchableItems = allItems.filter(
+      (item) => item.matchStatus === "needs_review" || item.matchStatus === "no_match"
+    );
     const items = body.videoId
       ? allItems.filter((item) => item.videoId === body.videoId)
-      : allItems
-          .filter((item) => item.matchStatus === "needs_review" || item.matchStatus === "no_match")
-          .slice(0, body.limit);
+      : body.limit === "all"
+        ? matchableItems
+        : matchableItems.slice(0, body.limit);
     let searched = 0;
 
     for (const item of items) {
@@ -49,7 +52,12 @@ export async function POST(request: Request) {
       searched += 1;
     }
 
-    return NextResponse.json({ searched, remaining: Math.max(0, allItems.length - searched) });
+    return NextResponse.json({
+      searched,
+      remaining: body.videoId
+        ? matchableItems.length
+        : Math.max(0, matchableItems.length - searched)
+    });
   } catch (error) {
     return NextResponse.json(
       { error: (error as Error).message },

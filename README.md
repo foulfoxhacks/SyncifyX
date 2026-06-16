@@ -4,6 +4,8 @@ API-first MVP for migrating YouTube Music liked songs into a Spotify playlist.
 
 The app uses Google OAuth for YouTube Data API access, Spotify OAuth for playlist creation, Postgres persistence, a simple title/artist parser, Spotify track search, confidence scoring, a review UI, and batched playlist imports.
 
+Current UI features include theme presets, adjustable batch sizes, all-mode matching, queue sorting, optional AI parse assist, and per-song best-match refresh.
+
 ## Setup
 
 1. Install dependencies:

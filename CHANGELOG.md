@@ -13,6 +13,7 @@
 
 ### Changed
 
+- Batch matching now supports presets, custom values up to 500, and an `all` mode.
 - YouTube Music source now targets the `LM` Liked Music playlist and does not silently fall back to regular YouTube liked videos unless explicitly enabled.
 - Matching now runs in batches instead of trying to process an entire liked-song library in one serverless request.
 - Spotify matching searches multiple candidate query shapes and scores title, artist, duration, music signals, exact matches, and remix/live/cover mismatches.
@@ -20,6 +21,7 @@
 
 ### Added
 
+- Theme presets, an in-app theme picker, and About/Customization/Migration mode panels.
 - Postgres persistence for Vercel/serverless hosting.
 - Per-song **Find best match** action.
 - Optional OpenAI parse assist through `OPENAI_MATCHING_ENABLED`.
