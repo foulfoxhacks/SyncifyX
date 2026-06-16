@@ -53,11 +53,28 @@ export function MigratorApp() {
   const [busyVideoId, setBusyVideoId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
-  async function refresh(nextFilter = filter) {
+  async function refresh(
+    nextFilter = filter,
+    retries = 0,
+    expectedProvider?: "google" | "spotify"
+  ): Promise<void> {
     const [statusData, itemsData] = await Promise.all([
-      apiRequest<ConnectionStatus>("/api/connections"),
-      apiRequest<{ items: ReviewItem[] }>(`/api/matches?status=${nextFilter}`)
+      apiRequest<ConnectionStatus>(`/api/connections?t=${Date.now()}`),
+      apiRequest<{ items: ReviewItem[] }>(`/api/matches?status=${nextFilter}&t=${Date.now()}`)
     ]);
+
+    const expectedProviderMissing =
+      expectedProvider === "google"
+        ? !statusData.google
+        : expectedProvider === "spotify"
+          ? !statusData.spotify
+          : !statusData.google && !statusData.spotify;
+
+    if (retries > 0 && expectedProviderMissing) {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      return refresh(nextFilter, retries - 1, expectedProvider);
+    }
+
     setStatus(statusData);
     setItems(itemsData.items);
   }
@@ -67,8 +84,15 @@ export function MigratorApp() {
     const error = params.get("error");
     const connected = params.get("connected");
     if (error) setMessage(error);
-    if (connected) setMessage(`${connected} connected.`);
-    refresh().catch((error) => setMessage(error.message));
+    if (connected) setMessage(`${capitalize(connected)} connected. Refreshing account status...`);
+    if (error || connected) {
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+    refresh(
+      filter,
+      connected === "google" || connected === "spotify" ? 4 : 0,
+      connected === "google" || connected === "spotify" ? connected : undefined
+    ).catch((error) => setMessage(error.message));
   }, []);
 
   async function runAction<T>(
@@ -150,6 +174,15 @@ export function MigratorApp() {
           <Feature icon={<Wand2 size={15} />} label="Find best match" />
           <Feature icon={<Sparkles size={15} />} label="Optional AI parse assist" />
         </div>
+        <a
+          className="sidebar-link"
+          href="https://github.com/foulfoxhacks/SyncifyX/blob/main/CHANGELOG.md"
+          target="_blank"
+          rel="noreferrer"
+        >
+          <ExternalLink size={15} aria-hidden />
+          Changelog
+        </a>
         <div className="step-list" aria-label="Import steps">
           <Step icon={<ExternalLink size={16} />} label="Connect Google" done={status?.google} />
           <Step icon={<ExternalLink size={16} />} label="Connect Spotify" done={status?.spotify} />
@@ -171,11 +204,11 @@ export function MigratorApp() {
           <div className="status-pills">
             <span className={`pill ${status?.google ? "ok" : ""}`}>
               <CheckCircle2 size={16} aria-hidden />
-              Google {status?.google ? "connected" : "needed"}
+              Google {status ? (status.google ? "connected" : "needed") : "checking"}
             </span>
             <span className={`pill ${status?.spotify ? "ok" : ""}`}>
               <CheckCircle2 size={16} aria-hidden />
-              Spotify {status?.spotify ? "connected" : "needed"}
+              Spotify {status ? (status.spotify ? "connected" : "needed") : "checking"}
             </span>
           </div>
         </div>
@@ -421,7 +454,15 @@ function ReviewRow({
 }
 
 async function apiRequest<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, init);
+  const headers = new Headers(init?.headers);
+  headers.set("cache-control", "no-cache");
+
+  const response = await fetch(url, {
+    cache: "no-store",
+    credentials: "same-origin",
+    ...init,
+    headers
+  });
   const text = await response.text();
   const contentType = response.headers.get("content-type") ?? "";
   const data = parseResponseText(text, contentType);
@@ -435,6 +476,10 @@ async function apiRequest<T>(url: string, init?: RequestInit): Promise<T> {
   }
 
   return data as T;
+}
+
+function capitalize(value: string) {
+  return value ? value.charAt(0).toUpperCase() + value.slice(1) : value;
 }
 
 function parseResponseText(text: string, contentType: string) {

@@ -4,5 +4,9 @@ import { getUserId } from "@/lib/session";
 
 export async function GET() {
   const userId = await getUserId();
-  return NextResponse.json(await getConnectionStatus(userId));
+  return NextResponse.json(await getConnectionStatus(userId), {
+    headers: {
+      "cache-control": "no-store, no-cache, must-revalidate"
+    }
+  });
 }

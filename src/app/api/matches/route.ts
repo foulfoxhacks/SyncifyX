@@ -12,7 +12,14 @@ const patchSchema = z.object({
 export async function GET(request: NextRequest) {
   const userId = await getUserId();
   const status = request.nextUrl.searchParams.get("status") as MatchStatus | "all" | null;
-  return NextResponse.json({ items: await listReviewItems(userId, status ?? "all") });
+  return NextResponse.json(
+    { items: await listReviewItems(userId, status ?? "all") },
+    {
+      headers: {
+        "cache-control": "no-store, no-cache, must-revalidate"
+      }
+    }
+  );
 }
 
 export async function PATCH(request: NextRequest) {

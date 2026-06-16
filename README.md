@@ -32,7 +32,7 @@ http://127.0.0.1:3000/api/auth/spotify/callback
 npm run dev
 ```
 
-For OAuth credential creation, GitHub push steps, and Vercel deployment notes, use [DEPLOYMENT.md](./DEPLOYMENT.md).
+For OAuth credential creation, GitHub push steps, and Vercel deployment notes, use [DEPLOYMENT.md](./DEPLOYMENT.md). For release notes, see [CHANGELOG.md](./CHANGELOG.md).
 
 ## Notes
 

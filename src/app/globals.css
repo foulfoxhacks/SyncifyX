@@ -209,6 +209,21 @@ a {
   color: #ff6d86;
 }
 
+.sidebar-link {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  color: #ffffff;
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 750;
+}
+
+.sidebar-link:hover {
+  color: #ff9aac;
+}
+
 .step-list {
   display: grid;
   gap: 12px;
