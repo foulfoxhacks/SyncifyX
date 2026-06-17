@@ -197,6 +197,53 @@ export function MigratorApp() {
     }
   }
 
+  async function runMatch() {
+    setBusy("match");
+    setMessage(null);
+
+    try {
+      if (effectiveBatch === "all") {
+        const chunkSize = Math.min(25, clampBatch(batchSize));
+        let totalSearched = 0;
+        let remaining = (status?.counts.needsReview ?? 0) + (status?.counts.noMatch ?? 0);
+
+        while (remaining > 0) {
+          const data = await apiRequest<{ searched: number; remaining: number }>("/api/matches/run", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ limit: chunkSize, useAi }),
+            timeoutMs: 60_000,
+            timeoutMessage: `The current match batch took too long after ${totalSearched} completed rows. Click Match all again to continue.`
+          });
+
+          totalSearched += data.searched;
+          remaining = data.remaining;
+          setMessage(`Matched ${totalSearched} songs so far. ${remaining} still need review.`);
+
+          if (data.searched === 0) break;
+        }
+
+        setMessage(`Matched ${totalSearched} songs. ${remaining} still need review.`);
+        await refresh();
+        return;
+      }
+
+      const data = await apiRequest<{ searched: number; remaining: number }>("/api/matches/run", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ limit: effectiveBatch, useAi }),
+        timeoutMs: 60_000,
+        timeoutMessage: "This match batch took too long. Try a smaller batch size in Customize."
+      });
+      setMessage(`Matched ${data.searched} songs. ${data.remaining} still need review.`);
+      await refresh();
+    } catch (error) {
+      setMessage((error as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function updateAccepted(videoId: string, spotifyTrackId: string | null) {
     try {
       await apiRequest<{ ok: boolean }>("/api/matches", {
@@ -312,15 +359,7 @@ export function MigratorApp() {
             <button
               className="button"
               disabled={!status?.spotify || !status?.counts.total || busy !== null}
-              onClick={() =>
-                runAction(
-                  "match",
-                  "/api/matches/run",
-                  (data: { searched: number; remaining: number }) =>
-                    `Matched ${data.searched} songs. ${data.remaining} still need review.`,
-                  { limit: effectiveBatch, useAi }
-                )
-              }
+              onClick={runMatch}
               title="Search Spotify and score the next batch"
             >
               {busy === "match" ? <Loader2 size={17} className="spin" /> : <RefreshCw size={17} />}
@@ -406,7 +445,7 @@ export function MigratorApp() {
                   </label>
                 ) : null}
               </div>
-              {batchMode === "all" ? <span className="option-note">All can run long on serverless.</span> : null}
+              {batchMode === "all" ? <span className="option-note">All runs in safe 25-song serverless batches.</span> : null}
             </div>
             <div className="drawer-section">
               <h2>Review</h2>

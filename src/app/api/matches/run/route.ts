@@ -16,6 +16,7 @@ const bodySchema = z.object({
   limit: z.union([z.number().int().min(1).max(500), z.literal("all")]).default(50),
   useAi: z.boolean().default(false)
 });
+const serverlessAllLimit = 25;
 
 export async function POST(request: Request) {
   try {
@@ -28,7 +29,7 @@ export async function POST(request: Request) {
     const items = body.videoId
       ? allItems.filter((item) => item.videoId === body.videoId)
       : body.limit === "all"
-        ? matchableItems
+        ? matchableItems.slice(0, serverlessAllLimit)
         : matchableItems.slice(0, body.limit);
     let searched = 0;
 
