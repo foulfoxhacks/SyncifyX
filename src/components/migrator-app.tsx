@@ -63,18 +63,6 @@ const themes: { key: ThemeName; label: string }[] = [
   { key: "contrast", label: "High Contrast" }
 ];
 
-const emptyStatus: ConnectionStatus = {
-  google: false,
-  spotify: false,
-  counts: {
-    total: 0,
-    matched: 0,
-    needsReview: 0,
-    noMatch: 0,
-    skipped: 0
-  }
-};
-
 export function MigratorApp() {
   const [status, setStatus] = useState<ConnectionStatus | null>(null);
   const [items, setItems] = useState<ReviewItem[]>([]);
@@ -141,7 +129,6 @@ export function MigratorApp() {
       connected === "google" || connected === "spotify" ? 4 : 0,
       connected === "google" || connected === "spotify" ? connected : undefined
     ).catch((loadError) => {
-      setStatus((current) => current ?? emptyStatus);
       if (error || connected) setMessage(loadError.message);
     });
   }, []);

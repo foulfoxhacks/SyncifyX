@@ -9,6 +9,7 @@
 - Prevented stale cached connection checks after Google or Spotify OAuth redirects.
 - Added a production canonical-host redirect so `APP_URL` controls whether the app stays on the Vercel domain or the custom domain.
 - Made production Google and Spotify OAuth callbacks derive from `APP_URL` so stale redirect env vars cannot point at the wrong host.
+- Renewed the session cookie on server requests and tied OAuth callbacks back to the original session so refresh/navigation does not appear to clear authorization.
 - Added Spotify Liked Songs saving as the primary import destination with the `user-library-modify` scope.
 - Added OAuth status retry logic so the connected provider has time to appear before the UI marks it as needed.
 - Changed provider pills to show `checking` while account state is loading.

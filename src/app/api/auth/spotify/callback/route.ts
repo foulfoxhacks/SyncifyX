@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { appUrl } from "@/lib/config";
-import { consumeOAuthState, getUserId } from "@/lib/session";
+import { consumeOAuthState, setSessionUserId } from "@/lib/session";
 import { exchangeSpotifyCode } from "@/lib/spotify";
 
 export async function GET(request: NextRequest) {
@@ -8,12 +8,13 @@ export async function GET(request: NextRequest) {
   const state = request.nextUrl.searchParams.get("state");
   const savedState = await consumeOAuthState("spotify");
 
-  if (!code || !state || state !== savedState) {
+  if (!code || !state || !savedState || state !== savedState.state || !savedState.userId) {
     return NextResponse.redirect(`${appUrl}/?error=spotify_oauth_state`);
   }
 
   try {
-    const userId = await getUserId();
+    const userId = savedState.userId;
+    await setSessionUserId(userId);
     await exchangeSpotifyCode(userId, code);
     return NextResponse.redirect(`${appUrl}/?connected=spotify`);
   } catch (error) {
