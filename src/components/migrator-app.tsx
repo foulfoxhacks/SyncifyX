@@ -99,16 +99,17 @@ export function MigratorApp() {
     retries = 0,
     expectedProvider?: "google" | "spotify"
   ): Promise<void> {
-    const [statusData, itemsData] = await Promise.all([
-      apiRequest<ConnectionStatus>(`/api/connections?t=${Date.now()}`, {
-        timeoutMs: 60_000,
-        timeoutMessage: "SyncifyX is still waking up the database. Refresh in a moment if this message stays visible."
-      }),
-      apiRequest<{ items: ReviewItem[] }>(`/api/matches?status=${nextFilter}&t=${Date.now()}`, {
+    const statusData = await apiRequest<ConnectionStatus>(`/api/connections?t=${Date.now()}`, {
+      timeoutMs: 60_000,
+      timeoutMessage: "SyncifyX is still waking up the database. Refresh in a moment if this message stays visible."
+    });
+    const hasReviewQueue = statusData.counts.total > 0;
+    const itemsData = hasReviewQueue
+      ? await apiRequest<{ items: ReviewItem[] }>(`/api/matches?status=${nextFilter}&t=${Date.now()}`, {
         timeoutMs: 60_000,
         timeoutMessage: "SyncifyX is still loading the review queue. Refresh in a moment if this message stays visible."
       })
-    ]);
+      : { items: [] };
 
     const expectedProviderMissing =
       expectedProvider === "google"
@@ -139,9 +140,9 @@ export function MigratorApp() {
       filter,
       connected === "google" || connected === "spotify" ? 4 : 0,
       connected === "google" || connected === "spotify" ? connected : undefined
-    ).catch((error) => {
+    ).catch((loadError) => {
       setStatus((current) => current ?? emptyStatus);
-      setMessage(error.message);
+      if (error || connected) setMessage(loadError.message);
     });
   }, []);
 
