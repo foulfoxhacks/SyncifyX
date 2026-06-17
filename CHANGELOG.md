@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-06-17
+
+### Fixed
+
+- Made matching resumable by processing one unscored song per serverless request instead of timing out on large libraries.
+- Prevented the matcher from reprocessing already-scored `needs_review` rows with existing Spotify candidates.
+- Reduced review-queue database load by fetching Spotify matches in one grouped query instead of one query per song.
+- Added upstream Spotify search timeouts so one slow candidate lookup does not stall the whole matching run.
+- Fixed dash-separated YouTube title parsing for en/em dash song titles.
+
+### Added
+
+- Added a progress bar for matching and Spotify Liked Songs saves.
+- Added chunked Spotify Liked Songs saves so large accepted libraries can transfer with visible progress.
+
 ## 2026-06-16
 
 ### Fixed

@@ -10,12 +10,41 @@ export class ApiError extends Error {
   }
 }
 
+type FetchJsonInit = RequestInit & {
+  timeoutMs?: number;
+};
+
 export async function fetchJson<T>(
   url: string,
-  init?: RequestInit,
+  init?: FetchJsonInit,
   retry429 = false
 ): Promise<T> {
-  const response = await fetch(url, init);
+  const { timeoutMs = 15_000, signal, ...fetchInit } = init ?? {};
+  const controller = signal ? null : new AbortController();
+  const timeout = controller
+    ? setTimeout(() => controller.abort(), timeoutMs)
+    : null;
+
+  let response: Response;
+
+  try {
+    response = await fetch(url, {
+      ...fetchInit,
+      signal: signal ?? controller?.signal
+    });
+  } catch (error) {
+    if ((error as Error).name === "AbortError") {
+      throw new ApiError(
+        `408 Request Timeout: ${url}`,
+        408,
+        "Request Timeout",
+        "Upstream request timed out"
+      );
+    }
+    throw error;
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
 
   if (response.status === 429 && retry429) {
     const retryAfter = Number(response.headers.get("retry-after") ?? "1");

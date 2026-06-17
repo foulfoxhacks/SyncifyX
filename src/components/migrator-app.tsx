@@ -41,6 +41,25 @@ type ApiRequestInit = RequestInit & {
   timeoutMessage?: string;
   timeoutMs?: number;
 };
+type ProgressState = {
+  label: string;
+  completed: number;
+  total: number;
+  detail?: string;
+};
+type MatchRunResponse = {
+  searched: number;
+  remaining: number;
+  total: number;
+};
+type ImportResponse = {
+  count: number;
+  destination: ImportDestination;
+  url: string | null;
+  total?: number;
+  remaining?: number;
+  nextOffset?: number | null;
+};
 type MigrationOption = {
   id: string;
   label: string;
@@ -81,6 +100,7 @@ export function MigratorApp() {
   const [busy, setBusy] = useState<BusyAction>(null);
   const [busyVideoId, setBusyVideoId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [progress, setProgress] = useState<ProgressState | null>(null);
 
   async function refresh(
     nextFilter = filter,
@@ -164,6 +184,12 @@ export function MigratorApp() {
   ) {
     setBusy(action);
     setMessage(null);
+    if (action === "sync") {
+      setProgress({ label: "Fetching source", completed: 0, total: 1, detail: "Loading YouTube items" });
+    }
+    if (action === "import") {
+      setProgress({ label: "Saving tracks", completed: 0, total: Math.max(1, importReady), detail: "Writing to Spotify" });
+    }
     try {
       const data = await apiRequest<T>(url, {
         method: "POST",
@@ -171,6 +197,12 @@ export function MigratorApp() {
         body: body ? JSON.stringify(body) : undefined
       });
       setMessage(success(data));
+      if (action === "sync") {
+        setProgress({ label: "Fetching source", completed: 1, total: 1, detail: "Fetch complete" });
+      }
+      if (action === "import") {
+        setProgress({ label: "Saving tracks", completed: Math.max(1, importReady), total: Math.max(1, importReady), detail: "Save complete" });
+      }
       await refresh();
     } catch (error) {
       setMessage((error as Error).message);
@@ -203,12 +235,19 @@ export function MigratorApp() {
 
     try {
       if (effectiveBatch === "all") {
-        const chunkSize = Math.min(25, clampBatch(batchSize));
+        const chunkSize = 1;
         let totalSearched = 0;
-        let remaining = (status?.counts.needsReview ?? 0) + (status?.counts.noMatch ?? 0);
+        let remaining = status?.counts.needsReview ?? 0;
+        let target = remaining;
+        setProgress({
+          label: "Matching songs",
+          completed: 0,
+          total: Math.max(1, target),
+          detail: "Starting safe one-song batches"
+        });
 
         while (remaining > 0) {
-          const data = await apiRequest<{ searched: number; remaining: number }>("/api/matches/run", {
+          const data = await apiRequest<MatchRunResponse>("/api/matches/run", {
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({ limit: chunkSize, useAi }),
@@ -218,24 +257,125 @@ export function MigratorApp() {
 
           totalSearched += data.searched;
           remaining = data.remaining;
-          setMessage(`Matched ${totalSearched} songs so far. ${remaining} still need review.`);
+          target = Math.max(totalSearched + remaining, data.total, 1);
+          setProgress({
+            label: "Matching songs",
+            completed: Math.min(target, totalSearched),
+            total: Math.max(1, target),
+            detail: matchProgressDetail(remaining)
+          });
+          setMessage(`Scored ${totalSearched} songs so far. ${remaining} unscored songs remain.`);
 
           if (data.searched === 0) break;
         }
 
-        setMessage(`Matched ${totalSearched} songs. ${remaining} still need review.`);
+        setMessage(matchCompleteMessage(totalSearched, remaining));
         await refresh();
         return;
       }
 
-      const data = await apiRequest<{ searched: number; remaining: number }>("/api/matches/run", {
+      let target = Math.min(
+        Number(effectiveBatch),
+        Math.max(0, status?.counts.needsReview ?? Number(effectiveBatch))
+      );
+      let totalSearched = 0;
+      let remaining = status?.counts.needsReview ?? target;
+      setProgress({
+        label: "Matching songs",
+        completed: 0,
+        total: Math.max(1, target),
+        detail: "Starting safe one-song batches"
+      });
+
+      while (totalSearched < target && remaining > 0) {
+        const data = await apiRequest<MatchRunResponse>("/api/matches/run", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ limit: 1, useAi }),
+          timeoutMs: 60_000,
+          timeoutMessage: "This match batch took too long. Try a smaller batch size in Customize."
+        });
+        totalSearched += data.searched;
+        remaining = data.remaining;
+        target = Math.max(Math.min(Number(effectiveBatch), totalSearched + remaining), 1);
+        setProgress({
+          label: "Matching songs",
+          completed: Math.min(target, totalSearched),
+          total: Math.max(1, target),
+          detail: matchProgressDetail(remaining)
+        });
+        setMessage(`Scored ${totalSearched} songs so far. ${remaining} unscored songs remain.`);
+        if (data.searched === 0) break;
+      }
+
+      setMessage(matchCompleteMessage(totalSearched, remaining));
+      await refresh();
+    } catch (error) {
+      setMessage((error as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function runImport() {
+    setBusy("import");
+    setMessage(null);
+    setProgress({
+      label: "Saving tracks",
+      completed: 0,
+      total: Math.max(1, importReady),
+      detail: "Preparing Spotify save"
+    });
+
+    try {
+      if (destinationId === "liked") {
+        const chunkSize = 50;
+        let offset = 0;
+        let saved = 0;
+        let total = Math.max(1, importReady);
+
+        while (true) {
+          const data = await apiRequest<ImportResponse>("/api/import/spotify", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ destinationId, offset, limit: chunkSize }),
+            timeoutMs: 60_000,
+            timeoutMessage: `Saving Spotify Liked Songs took too long after ${saved} tracks. Click Save Likes again to retry.`
+          });
+
+          saved += data.count;
+          total = Math.max(1, data.total ?? total);
+          setProgress({
+            label: "Saving tracks",
+            completed: Math.min(total, saved),
+            total,
+            detail: `${data.remaining ?? Math.max(0, total - saved)} tracks left`
+          });
+          setMessage(`Saved ${saved} of ${total} tracks to Spotify Liked Songs.`);
+
+          if (data.nextOffset === null || data.nextOffset === undefined || data.count === 0) break;
+          offset = data.nextOffset;
+        }
+
+        setMessage(`Saved ${saved} tracks to Spotify Liked Songs.`);
+        await refresh();
+        return;
+      }
+
+      const data = await apiRequest<ImportResponse>("/api/import/spotify", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ limit: effectiveBatch, useAi }),
+        body: JSON.stringify({ destinationId }),
         timeoutMs: 60_000,
-        timeoutMessage: "This match batch took too long. Try a smaller batch size in Customize."
+        timeoutMessage: "Saving to Spotify took too long. Try Spotify Liked Songs first, then export a playlist after."
       });
-      setMessage(`Matched ${data.searched} songs. ${data.remaining} still need review.`);
+      setProgress({
+        label: "Saving tracks",
+        completed: Math.max(1, data.count),
+        total: Math.max(1, data.total ?? data.count),
+        detail: "Save complete"
+      });
+      setMessage(importMessage(data.count, data.destination, data.url));
       await refresh();
     } catch (error) {
       setMessage((error as Error).message);
@@ -258,10 +398,11 @@ export function MigratorApp() {
   }
 
   const displayedItems = useMemo(() => sortItems(items, sortMode), [items, sortMode]);
-  const importReady = useMemo(
+  const acceptedInView = useMemo(
     () => items.filter((item) => item.matches.some((match) => match.accepted)).length,
     [items]
   );
+  const importReady = status?.counts.matched ?? acceptedInView;
   const reviewed = (status?.counts.matched ?? 0) + (status?.counts.noMatch ?? 0) + (status?.counts.skipped ?? 0);
   const effectiveBatch = batchMode === "all" ? "all" : batchMode === "custom" ? clampBatch(customBatchSize) : batchSize;
   const matchLabel = effectiveBatch === "all" ? "Match all" : `Match ${effectiveBatch}`;
@@ -324,6 +465,7 @@ export function MigratorApp() {
         </div>
 
         {message ? <div className="notice">{message}</div> : null}
+        {progress ? <ProgressBar progress={progress} /> : null}
 
         <section className="control-bar" aria-label="Main controls">
           <div className="control-summary">
@@ -368,15 +510,7 @@ export function MigratorApp() {
             <button
               className="button primary"
               disabled={!importReady || busy !== null}
-              onClick={() =>
-                runAction(
-                  "import",
-                  "/api/import/spotify",
-                  (data: { count: number; destination: ImportDestination; url: string | null }) =>
-                    importMessage(data.count, data.destination, data.url),
-                  { destinationId }
-                )
-              }
+              onClick={runImport}
               title="Save accepted tracks to Spotify"
             >
               {busy === "import" ? <Loader2 size={17} className="spin" /> : <Upload size={17} />}
@@ -445,7 +579,7 @@ export function MigratorApp() {
                   </label>
                 ) : null}
               </div>
-              {batchMode === "all" ? <span className="option-note">All runs in safe 25-song serverless batches.</span> : null}
+              {batchMode === "all" ? <span className="option-note">All runs in safe one-song serverless batches.</span> : null}
             </div>
             <div className="drawer-section">
               <h2>Review</h2>
@@ -615,6 +749,27 @@ function Stat({ value, label }: { value: number; label: string }) {
   );
 }
 
+function ProgressBar({ progress }: { progress: ProgressState }) {
+  const percent = progress.total > 0
+    ? Math.min(100, Math.round((progress.completed / progress.total) * 100))
+    : 0;
+
+  return (
+    <section className="progress-panel" aria-label={progress.label}>
+      <div className="progress-copy">
+        <b>{progress.label}</b>
+        <span>
+          {progress.completed} / {progress.total}
+          {progress.detail ? ` - ${progress.detail}` : ""}
+        </span>
+      </div>
+      <div className="progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}>
+        <span className="progress-fill" style={{ width: `${percent}%` }} />
+      </div>
+    </section>
+  );
+}
+
 function ReviewRow({
   item,
   busy,
@@ -737,6 +892,20 @@ function capitalize(value: string) {
 function clampBatch(value: number) {
   if (!Number.isFinite(value)) return 50;
   return Math.min(500, Math.max(1, Math.round(value)));
+}
+
+function matchProgressDetail(remaining: number) {
+  return remaining > 0
+    ? `${remaining} unscored songs left`
+    : "Ready for review";
+}
+
+function matchCompleteMessage(scored: number, remaining: number) {
+  if (scored === 0 && remaining === 0) {
+    return "No unscored songs were left to match. Review the current queue or fetch again.";
+  }
+
+  return `Scored ${scored} songs. ${remaining} unscored songs remain.`;
 }
 
 function importMessage(count: number, destination: ImportDestination, url: string | null) {

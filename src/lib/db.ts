@@ -52,6 +52,7 @@ type YouTubeItemRow = {
 };
 
 type SpotifyMatchRow = {
+  youtubevideoid?: string;
   spotifytrackid: string;
   trackname: string;
   artistname: string;
@@ -281,6 +282,58 @@ export async function listYouTubeItems(userId: string) {
   return result.rows.map(mapYouTubeRow);
 }
 
+export async function countYouTubeItemsForMatching(userId: string) {
+  await ensureSchema();
+  const result = await pool.query<{ total: number }>(
+    `SELECT COUNT(*)::int AS total
+     FROM youtube_items item
+     WHERE item.user_id = $1
+       AND item.match_status = 'needs_review'
+       AND NOT EXISTS (
+        SELECT 1
+        FROM spotify_matches match
+        WHERE match.user_id = item.user_id
+          AND match.youtube_video_id = item.video_id
+       )`,
+    [userId]
+  );
+
+  return result.rows[0]?.total ?? 0;
+}
+
+export async function listYouTubeItemsForMatching(userId: string, limit: number) {
+  await ensureSchema();
+  const result = await pool.query<YouTubeItemRow>(
+    `SELECT
+      item.user_id AS userid,
+      item.video_id AS videoid,
+      item.title,
+      item.channel_title AS channeltitle,
+      item.description,
+      item.published_at AS publishedat,
+      item.thumbnail,
+      item.position,
+      item.duration_ms AS durationms,
+      item.match_status AS matchstatus,
+      item.parsed_artist AS parsedartist,
+      item.parsed_title AS parsedtitle
+     FROM youtube_items item
+     WHERE item.user_id = $1
+       AND item.match_status = 'needs_review'
+       AND NOT EXISTS (
+        SELECT 1
+        FROM spotify_matches match
+        WHERE match.user_id = item.user_id
+          AND match.youtube_video_id = item.video_id
+       )
+     ORDER BY item.position ASC
+     LIMIT $2`,
+    [userId, limit]
+  );
+
+  return result.rows.map(mapYouTubeRow);
+}
+
 export async function insertMatches(
   userId: string,
   videoId: string,
@@ -362,10 +415,12 @@ export async function listReviewItems(userId: string, status?: MatchStatus | "al
     params
   );
 
-  const items: ReviewItem[] = [];
-  for (const row of rows.rows) {
-    const matches = await pool.query<SpotifyMatchRow>(
-      `SELECT
+  if (rows.rows.length === 0) return [];
+
+  const videoIds = rows.rows.map((row) => row.videoid);
+  const matches = await pool.query<SpotifyMatchRow>(
+    `SELECT
+        youtube_video_id AS youtubevideoid,
         spotify_track_id AS spotifytrackid,
         track_name AS trackname,
         artist_name AS artistname,
@@ -375,18 +430,23 @@ export async function listReviewItems(userId: string, status?: MatchStatus | "al
         accepted,
         reason
        FROM spotify_matches
-       WHERE user_id = $1 AND youtube_video_id = $2
-       ORDER BY confidence_score DESC`,
-      [userId, row.videoid]
-    );
+       WHERE user_id = $1 AND youtube_video_id = ANY($2::text[])
+       ORDER BY youtube_video_id ASC, confidence_score DESC`,
+    [userId, videoIds]
+  );
 
-    items.push({
-      ...mapYouTubeRow(row),
-      matches: matches.rows.map(mapSpotifyMatchRow)
-    });
+  const matchesByVideoId = new Map<string, ReturnType<typeof mapSpotifyMatchRow>[]>();
+  for (const match of matches.rows) {
+    if (!match.youtubevideoid) continue;
+    const grouped = matchesByVideoId.get(match.youtubevideoid) ?? [];
+    grouped.push(mapSpotifyMatchRow(match));
+    matchesByVideoId.set(match.youtubevideoid, grouped);
   }
 
-  return items;
+  return rows.rows.map((row) => ({
+    ...mapYouTubeRow(row),
+    matches: matchesByVideoId.get(row.videoid) ?? []
+  }));
 }
 
 export async function acceptMatch(

@@ -38,7 +38,7 @@ const featuringPattern = /\s+(?:ft\.?|feat\.?|featuring)\s+(.+)$/i;
 export function parseYouTubeTitle(item: Pick<YouTubeItem, "title" | "channelTitle">): ParsedTrack {
   const original = item.title.replace(/\s+/g, " ").trim();
   const cleaned = cleanSongTitle(stripNoise(original));
-  const dashMatch = cleaned.match(/^(.+?)\s[-–—]\s(.+)$/);
+  const dashMatch = cleaned.match(/^(.+?)\s[-\u2013\u2014]\s(.+)$/);
 
   if (dashMatch) {
     return {

@@ -140,7 +140,8 @@ export async function searchSpotifyTracks(
   const response = await fetchJson<SpotifySearchResponse>(
     `https://api.spotify.com/v1/search?${params.toString()}`,
     {
-      headers: { authorization: `Bearer ${token}` }
+      headers: { authorization: `Bearer ${token}` },
+      timeoutMs: 8_000
     },
     true
   );
@@ -156,7 +157,17 @@ export async function searchSpotifyTrackCandidates(
   const tracks: SpotifyTrack[] = [];
 
   for (const query of queries) {
-    const results = await searchSpotifyTracks(userId, query.title, query.artist);
+    let results: SpotifyTrack[];
+
+    try {
+      results = await searchSpotifyTracks(userId, query.title, query.artist);
+    } catch (error) {
+      if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+        throw error;
+      }
+      continue;
+    }
+
     for (const track of results) {
       if (!seen.has(track.id)) {
         seen.add(track.id);
