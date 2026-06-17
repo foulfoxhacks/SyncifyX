@@ -37,6 +37,10 @@ type SortMode = "position" | "confidence" | "needs_review" | "accepted";
 type ThemeName = "syncify" | "midnight" | "studio" | "contrast";
 type BatchMode = "preset" | "custom" | "all";
 type ImportDestination = "liked" | "playlist" | "both" | "existing";
+type ApiRequestInit = RequestInit & {
+  timeoutMessage?: string;
+  timeoutMs?: number;
+};
 type MigrationOption = {
   id: string;
   label: string;
@@ -96,8 +100,14 @@ export function MigratorApp() {
     expectedProvider?: "google" | "spotify"
   ): Promise<void> {
     const [statusData, itemsData] = await Promise.all([
-      apiRequest<ConnectionStatus>(`/api/connections?t=${Date.now()}`),
-      apiRequest<{ items: ReviewItem[] }>(`/api/matches?status=${nextFilter}&t=${Date.now()}`)
+      apiRequest<ConnectionStatus>(`/api/connections?t=${Date.now()}`, {
+        timeoutMs: 60_000,
+        timeoutMessage: "SyncifyX is still waking up the database. Refresh in a moment if this message stays visible."
+      }),
+      apiRequest<{ items: ReviewItem[] }>(`/api/matches?status=${nextFilter}&t=${Date.now()}`, {
+        timeoutMs: 60_000,
+        timeoutMessage: "SyncifyX is still loading the review queue. Refresh in a moment if this message stays visible."
+      })
     ]);
 
     const expectedProviderMissing =
@@ -130,8 +140,7 @@ export function MigratorApp() {
       connected === "google" || connected === "spotify" ? 4 : 0,
       connected === "google" || connected === "spotify" ? connected : undefined
     ).catch((error) => {
-      setStatus(emptyStatus);
-      setItems([]);
+      setStatus((current) => current ?? emptyStatus);
       setMessage(error.message);
     });
   }, []);
@@ -651,24 +660,28 @@ function ReviewRow({
   );
 }
 
-async function apiRequest<T>(url: string, init?: RequestInit): Promise<T> {
+async function apiRequest<T>(url: string, init?: ApiRequestInit): Promise<T> {
+  const { timeoutMessage, timeoutMs = 45_000, ...fetchInit } = init ?? {};
   const headers = new Headers(init?.headers);
   headers.set("cache-control", "no-cache");
   const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), 15_000);
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
 
   let response: Response;
   try {
     response = await fetch(url, {
       cache: "no-store",
       credentials: "same-origin",
-      ...init,
+      ...fetchInit,
       headers,
-      signal: init?.signal ?? controller.signal
+      signal: fetchInit.signal ?? controller.signal
     });
   } catch (error) {
     if ((error as Error).name === "AbortError") {
-      throw new Error("Request timed out while loading SyncifyX. Check the Vercel deployment logs and database connection variables.");
+      throw new Error(
+        timeoutMessage ??
+          "SyncifyX took too long to respond. This is usually a cold start or database wake-up; wait a moment and try again."
+      );
     }
     throw error;
   } finally {
