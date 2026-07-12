@@ -1,5 +1,5 @@
 import { Pool, type PoolClient } from "pg";
-import type { MatchStatus, ReviewItem, SpotifyCandidate, YouTubeItem } from "./types";
+import type { MatchStatus, SpotifyCandidate, YouTubeItem } from "./types";
 
 const connectionString = process.env.DATABASE_URL;
 
@@ -64,7 +64,6 @@ type SpotifyMatchRow = {
 };
 
 declare global {
-  // eslint-disable-next-line no-var
   var __syncifyxPgPool: Pool | undefined;
 }
 

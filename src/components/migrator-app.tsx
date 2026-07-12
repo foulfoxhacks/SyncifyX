@@ -151,6 +151,9 @@ export function MigratorApp() {
     ).catch((loadError) => {
       if (error || connected) setMessage(loadError.message);
     });
+    // This initialization intentionally runs only once; later filter changes
+    // are loaded by the filter controls rather than replaying OAuth handling.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
