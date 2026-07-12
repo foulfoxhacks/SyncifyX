@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
+import Image from "next/image";
 import type { MatchStatus, ReviewItem } from "@/lib/types";
 
 type ConnectionStatus = {
@@ -789,7 +790,11 @@ function ReviewRow({
 
   return (
     <div className="row">
-      {item.thumbnail ? <img className="thumb" src={item.thumbnail} alt="" /> : <div className="thumb" aria-hidden />}
+      {item.thumbnail ? (
+        <Image className="thumb" src={item.thumbnail} alt="" width={76} height={43} unoptimized />
+      ) : (
+        <div className="thumb" aria-hidden />
+      )}
       <div className="title-block">
         <span className={`badge ${item.matchStatus}`}>{labelStatus(item.matchStatus)}</span>
         <strong title={item.title}>{item.title}</strong>
